@@ -202,6 +202,8 @@ static hppa_device_t parisc_devices[HPPA_MAX_CPUS+16] = { PARISC_DEVICE_LIST };
     DINO_HPA,\
     DINO_UART_HPA,\
     /* DINO_SCSI_HPA, */ \
+    LASI_HPA, \
+    LASI_LAN_HPA, \
     CPU_HPA,\
     MEMORY_HPA,\
     0
@@ -1205,6 +1207,24 @@ static int pdc_io(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
+static int pdc_lan_station_id(unsigned int *arg)
+{
+    unsigned long option = ARG1;
+    unsigned char *result = (unsigned char *)ARG2;
+    int i;
+
+    switch (option) {
+        case PDC_LAN_STATION_ID_READ:
+            if (ARG3 != LASI_LAN_HPA)
+                return PDC_INVALID_ARG;
+            /* qemu gives us the MAC in offset 0x10 */
+            for (i = 0; i < PDC_LAN_STATION_ID_SIZE; i++)
+                result[i] = *(unsigned int *)(LASI_LAN_HPA+0x10+i*sizeof(int));
+            return PDC_OK;
+    }
+    return PDC_BAD_OPTION;
+}
+
 static int pdc_pci_index(unsigned int *arg)
 {
     unsigned long option = ARG1;
@@ -1354,10 +1374,13 @@ int __VISIBLE parisc_pdc_entry(unsigned int *arg FUNC_MANY_ARGS)
             reset();
             return PDC_OK;
 
+        case PDC_LAN_STATION_ID:
+            return pdc_lan_station_id(arg);
+
         case PDC_PCI_INDEX:
             return pdc_pci_index(arg);
 
-       case PDC_RELOCATE:
+        case PDC_RELOCATE:
             /* We don't want to relocate any firmware. */
             return PDC_BAD_PROC;
 
