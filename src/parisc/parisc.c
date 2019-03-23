@@ -1210,16 +1210,13 @@ static int pdc_io(unsigned int *arg)
 static int pdc_lan_station_id(unsigned int *arg)
 {
     unsigned long option = ARG1;
-    unsigned char *result = (unsigned char *)ARG2;
-    int i;
 
     switch (option) {
         case PDC_LAN_STATION_ID_READ:
             if (ARG3 != LASI_LAN_HPA)
                 return PDC_INVALID_ARG;
-            /* qemu gives us the MAC in offset 0x10 */
-            for (i = 0; i < PDC_LAN_STATION_ID_SIZE; i++)
-                result[i] = *(unsigned int *)(LASI_LAN_HPA+0x10+i*sizeof(int));
+            /* HACK: qemu stores the MAC of NIC to result (ARG2) */
+            *(unsigned long *)(LASI_LAN_HPA+12) = ARG2;
             return PDC_OK;
     }
     return PDC_BAD_OPTION;
