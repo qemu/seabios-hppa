@@ -268,9 +268,22 @@ int HPA_is_storage_device(unsigned long hpa)
 }
 
 
+static unsigned long keep_list[] = { PARISC_KEEP_LIST };
+
+static void remove_from_keep_list(unsigned long hpa)
+{
+    int i = 0;
+
+    while (keep_list[i] && keep_list[i] != hpa)
+        i++;
+    while (keep_list[i]) {
+            ++i;
+            keep_list[i-1] = keep_list[i];
+    }
+}
+
 static int keep_this_hpa(unsigned long hpa)
 {
-    static const unsigned long keep_list[] = { PARISC_KEEP_LIST };
     int i = 0;
 
     while (keep_list[i]) {
@@ -296,6 +309,15 @@ static void remove_parisc_devices(unsigned int num_cpus)
     if (!uninitialized)
         return;
     uninitialized = 0;
+
+    /* check if qemu provides the LASI chip */
+    if (*(unsigned long *)(LASI_HPA+16) == 0) { // check LASI_IAR
+        remove_from_keep_list(LASI_HPA);
+        remove_from_keep_list(LASI_LAN_HPA);
+    } else
+    /* check if qemu provides the LASI i82596 LAN card */
+    if (*(unsigned long *)(LASI_LAN_HPA+12) != 0xBEEFBABE)
+        remove_from_keep_list(LASI_LAN_HPA);
 
     p = t = 0;
     while ((hpa = parisc_devices[p].hpa) != 0) {
@@ -1210,10 +1232,13 @@ static int pdc_io(unsigned int *arg)
 static int pdc_lan_station_id(unsigned int *arg)
 {
     unsigned long option = ARG1;
+    unsigned char *result = (unsigned char *)ARG2;
 
     switch (option) {
         case PDC_LAN_STATION_ID_READ:
             if (ARG3 != LASI_LAN_HPA)
+                return PDC_INVALID_ARG;
+            if (!keep_this_hpa(LASI_LAN_HPA))
                 return PDC_INVALID_ARG;
             /* HACK: qemu stores the MAC of NIC to result (ARG2) */
             *(unsigned long *)(LASI_LAN_HPA+12) = ARG2;
