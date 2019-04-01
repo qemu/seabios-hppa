@@ -765,6 +765,7 @@ static int pdc_chassis(unsigned int *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
+    short *display_model = (short *)ARG3;
 
     switch (option) {
         case PDC_CHASSIS_DISP:
@@ -780,6 +781,13 @@ static int pdc_chassis(unsigned int *arg)
         case PDC_CHASSIS_WARN:
             // return warnings regarding fans, batteries and temperature: None!
             result[0] = 0;
+            return PDC_OK;
+        case PDC_RETURN_CHASSIS_INFO: /* return chassis LED/LCD info */
+            return PDC_BAD_OPTION; // XXX: We could emulate an LCD display here:
+            result[0] = result[1] = 4; // actcnt & maxcnt
+            memset((char *)ARG3, 0, ARG4);
+            display_model[0] = 1; // DISPLAY_MODEL_NONE
+            display_model[1] = 0; // LCD WIDTH is 0
             return PDC_OK;
     }
     return PDC_BAD_PROC;
@@ -1236,7 +1244,6 @@ static int pdc_io(unsigned int *arg)
 static int pdc_lan_station_id(unsigned int *arg)
 {
     unsigned long option = ARG1;
-    unsigned char *result = (unsigned char *)ARG2;
 
     switch (option) {
         case PDC_LAN_STATION_ID_READ:
