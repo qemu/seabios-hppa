@@ -203,7 +203,9 @@ static hppa_device_t parisc_devices[HPPA_MAX_CPUS+16] = { PARISC_DEVICE_LIST };
     DINO_UART_HPA,\
     /* DINO_SCSI_HPA, */ \
     LASI_HPA, \
+    LASI_UART_HPA, \
     LASI_LAN_HPA, \
+    LASI_LPT_HPA, \
     CPU_HPA,\
     MEMORY_HPA,\
     0
@@ -310,12 +312,14 @@ static void remove_parisc_devices(unsigned int num_cpus)
         return;
     uninitialized = 0;
 
-    /* check if qemu provides the LASI chip */
+    /* check if qemu emulates LASI chip */
     if (*(unsigned long *)(LASI_HPA+16) == 0) { // check LASI_IAR
         remove_from_keep_list(LASI_HPA);
+        remove_from_keep_list(LASI_UART_HPA);
         remove_from_keep_list(LASI_LAN_HPA);
+        remove_from_keep_list(LASI_LPT_HPA);
     } else
-    /* check if qemu provides the LASI i82596 LAN card */
+    /* check if qemu emulates LASI i82596 LAN card */
     if (*(unsigned long *)(LASI_LAN_HPA+12) != 0xBEEFBABE)
         remove_from_keep_list(LASI_LAN_HPA);
 
