@@ -312,16 +312,17 @@ static void remove_parisc_devices(unsigned int num_cpus)
         return;
     uninitialized = 0;
 
-    /* check if qemu emulates LASI chip */
-    if (*(unsigned long *)(LASI_HPA+16) == 0) { // check LASI_IAR
+    /* check if qemu emulates LASI chip (LASI_IAR exists) */
+    if (*(unsigned long *)(LASI_HPA+16) == 0) {
         remove_from_keep_list(LASI_HPA);
         remove_from_keep_list(LASI_UART_HPA);
         remove_from_keep_list(LASI_LAN_HPA);
         remove_from_keep_list(LASI_LPT_HPA);
-    } else
-    /* check if qemu emulates LASI i82596 LAN card */
-    if (*(unsigned long *)(LASI_LAN_HPA+12) != 0xBEEFBABE)
-        remove_from_keep_list(LASI_LAN_HPA);
+    } else {
+        /* check if qemu emulates LASI i82596 LAN card */
+        if (*(unsigned long *)(LASI_LAN_HPA+12) != 0xBEEFBABE)
+            remove_from_keep_list(LASI_LAN_HPA);
+    }
 
     p = t = 0;
     while ((hpa = parisc_devices[p].hpa) != 0) {
@@ -1251,7 +1252,7 @@ static int pdc_lan_station_id(unsigned int *arg)
                 return PDC_INVALID_ARG;
             if (!keep_this_hpa(LASI_LAN_HPA))
                 return PDC_INVALID_ARG;
-            /* HACK: qemu stores the MAC of NIC to result (ARG2) */
+            /* Let qemu store the MAC of NIC to address @ARG2 */
             *(unsigned long *)(LASI_LAN_HPA+12) = ARG2;
             return PDC_OK;
     }
