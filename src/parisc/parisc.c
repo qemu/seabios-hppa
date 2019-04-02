@@ -783,11 +783,11 @@ static int pdc_chassis(unsigned int *arg)
             result[0] = 0;
             return PDC_OK;
         case PDC_RETURN_CHASSIS_INFO: /* return chassis LED/LCD info */
-            return PDC_BAD_OPTION; // XXX: We could emulate an LCD display here:
+            // XXX: Later we could emulate an LCD display here.
             result[0] = result[1] = 4; // actcnt & maxcnt
             memset((char *)ARG3, 0, ARG4);
-            display_model[0] = 1; // DISPLAY_MODEL_NONE
-            display_model[1] = 0; // LCD WIDTH is 0
+            display_model[0] = 1; // 1=DISPLAY_MODEL_NONE
+            display_model[1] = 0; // 0=LCD WIDTH is 0
             return PDC_OK;
     }
     return PDC_BAD_PROC;
