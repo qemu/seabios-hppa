@@ -124,7 +124,7 @@ extern char iodc_entry_table[14*4];
 
 static int index_of_CPU_HPA(unsigned long hpa) {
     int i;
-    for (i = 1; i < smp_cpus; i++) {
+    for (i = 0; i < smp_cpus; i++) {
         if (hpa == CPU_HPA_IDX(i))
             return i;
     }
