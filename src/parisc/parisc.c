@@ -96,8 +96,12 @@ extern unsigned long boot_args[];
 #define initrd_start		(boot_args[3])
 #define initrd_end		(boot_args[4])
 #define smp_cpus		(boot_args[5])
-#define pdc_debug		0 // (boot_args[6])
+#define pdc_debug               (boot_args[6])
 #define fw_cfg_port		(boot_args[7])
+
+/* flags for pdc_debug */
+#define DEBUG_PDC       0x0001
+#define DEBUG_IODC      0x0002
 
 unsigned long PORT_QEMU_CFG_CTL;
 unsigned int tlb_entries = 256;
@@ -520,7 +524,7 @@ void parisc_screenc(char c)
 
 void iodc_log_call(unsigned int *arg, const char *func)
 {
-    if (pdc_debug) {
+    if (pdc_debug & DEBUG_IODC) {
         printf("\nIODC %s called: hpa=0x%x (%s) option=0x%x arg2=0x%x arg3=0x%x ", func, ARG0, hpa_name(ARG0), ARG1, ARG2, ARG3);
         printf("result=0x%x arg5=0x%x arg6=0x%x arg7=0x%x\n", ARG4, ARG5, ARG6, ARG7);
     }
@@ -1427,7 +1431,7 @@ int __VISIBLE parisc_pdc_entry(unsigned int *arg FUNC_MANY_ARGS)
     unsigned long proc = ARG0;
     unsigned long option = ARG1;
 
-    if (pdc_debug) {
+    if (pdc_debug & DEBUG_PDC) {
         printf("\nSeaBIOS: Start PDC proc %s(%d) option %d result=0x%x ARG3=0x%x %s ",
                 pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3, (proc == PDC_IODC)?hpa_name(ARG3):"");
         printf("ARG4=0x%x ARG5=0x%x ARG6=0x%x ARG7=0x%x\n", ARG4, ARG5, ARG6, ARG7);
@@ -1741,6 +1745,25 @@ static int artist_present(void)
     return !!(*(u32 *)0xf8380004 == 0x6dc20006);
 }
 
+unsigned long _atoul(char *str)
+{
+    unsigned long val = 0;
+    while (*str) {
+        val *= 10;
+        val += *str - '0';
+        str++;
+    }
+    return val;
+}
+
+unsigned long romfile_loadstring_to_int(const char *name, unsigned long defval)
+{
+    char *str = romfile_loadfile(name, NULL);
+    if (str)
+        return _atoul(str);
+    return defval;
+}
+
 void __VISIBLE start_parisc_firmware(void)
 {
     unsigned int i, cpu_hz;
@@ -1774,6 +1797,8 @@ void __VISIBLE start_parisc_firmware(void)
 
     powersw_ptr = (int *) (unsigned long)
         romfile_loadint("/etc/power-button-addr", (unsigned long)&powersw_nop);
+
+    pdc_debug = romfile_loadstring_to_int("pdc_debug", 0);
 
     /* Initialize PAGE0 */
     memset((void*)PAGE0, 0, sizeof(*PAGE0));
