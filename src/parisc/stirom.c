@@ -30,12 +30,13 @@
 
 #define __stifunc(_name) __attribute__((section(".sti.text." _name)))
 
-static const __stidata char user_data[256];
-static const u32 sti_region_list[STI_REGION_MAX] __stidata = { 0x8002, 0x40009000, 0x04008280, 0x0e024001, 0, 0  };
-static const struct font __stidata sti_rom_font = {
+static const __stidata char user_data[256] __aligned(32);
+static const u32 sti_region_list[STI_REGION_MAX] __stidata __aligned(32)
+    = { 0x8002, 0x40009000, 0x04008280, 0x0e024001, 0, 0  };
+static const struct font __stidata __aligned(32) sti_rom_font = {
     .hdr = {
         .first_char = 0,
-        .last_char = 0,
+        .last_char = 255,
         .width = 8,
         .height = 16,
         .font_type = STI_FONT_HPROMAN8,
