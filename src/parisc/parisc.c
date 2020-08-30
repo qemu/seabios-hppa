@@ -1798,7 +1798,7 @@ void __VISIBLE start_parisc_firmware(void)
     powersw_ptr = (int *) (unsigned long)
         romfile_loadint("/etc/power-button-addr", (unsigned long)&powersw_nop);
 
-    pdc_debug = romfile_loadstring_to_int("pdc_debug", 0);
+    pdc_debug = romfile_loadstring_to_int("opt/pdc_debug", 0);
 
     /* Initialize PAGE0 */
     memset((void*)PAGE0, 0, sizeof(*PAGE0));
