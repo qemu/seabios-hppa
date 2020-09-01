@@ -319,7 +319,7 @@ static const mon_tbl_desc __stidata sti_mon_table[] = {
 
 struct sti_rom __stiheader sti_proc_rom = {
     .type = { 0x03, 0x03, 0x03, 0x03 },
-    .num_mons = 1,
+    .num_mons = ARRAY_SIZE(sti_mon_table),
     .revno = { 0x84, 0x07 },
     .graphics_id = { 0x2b4ded6d, 0x40a00499 },
 };
@@ -410,6 +410,7 @@ static int __stifunc("init_graph") sti_init_graph(struct sti_init_flags *flags,
     out->errno = 0;
     if (resolution & (1 << 31)) {
         cfg->text_planes = 1;
+        out->text_planes = 1;
     } else {
         out->text_planes = in->text_planes;
     }
