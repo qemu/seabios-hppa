@@ -421,8 +421,10 @@ static int __stifunc("init_graph") sti_init_graph(struct sti_init_flags *flags,
     cfg->onscreen_y = resolution & 0xfff;
     cfg->offscreen_x = 0;
     cfg->offscreen_y = 0;
-    cfg->total_x = cfg->onscreen_x;
+    cfg->total_x = 2048;  /* hardcoded width */
     cfg->total_y = cfg->onscreen_y;
+    if (cfg->total_y < 1024)
+        cfg->total_y = 1024;
 
     if (flags->clear) {
         /* clear screen */
@@ -480,6 +482,8 @@ static __stifunc("inq_conf") int sti_inq_conf(struct sti_conf_flags *flags,
     out->bits_per_pixel = 8;
     out->bits_used = 8;
     out->planes = cfg->text_planes;
+    /* attributes for GCDESCRIBE. See graphics.h and framebuf.h include files. */
+    out->attributes = 0x1836;
     out->dev_name[0] = 'H';
     out->dev_name[1] = 'P';
     out->dev_name[2] = 'A';
