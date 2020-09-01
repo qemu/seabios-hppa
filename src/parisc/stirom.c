@@ -410,10 +410,12 @@ static int __stifunc("init_graph") sti_init_graph(struct sti_init_flags *flags,
     out->errno = 0;
     if (resolution & (1 << 31)) {
         cfg->text_planes = 1;
-        out->text_planes = 1;
     } else {
-        out->text_planes = in->text_planes;
+        cfg->text_planes = in->text_planes;
+        if (cfg->text_planes < 0 || cfg->text_planes > 3)
+            cfg->text_planes = 3;
     }
+    out->text_planes = cfg->text_planes;
 
     cfg->onscreen_x = (resolution >> 16) & 0xfff;
     cfg->onscreen_y = resolution & 0xfff;
@@ -476,6 +478,7 @@ static __stifunc("inq_conf") int sti_inq_conf(struct sti_conf_flags *flags,
     out->total_x = cfg->total_x;
     out->total_y = cfg->total_y;
     out->bits_per_pixel = 8;
+    out->bits_used = 8;
     out->planes = cfg->text_planes;
     out->dev_name[0] = 'H';
     out->dev_name[1] = 'P';
