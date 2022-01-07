@@ -17,7 +17,7 @@ SECTIONS
 		_etext = . ;
 	}
 
-        . = ALIGN(4096);
+        . = ALIGN(4096*16);
         .sti : {
                 _sti_rom_start = .;
                 *(.sti.hdr)
@@ -32,6 +32,8 @@ SECTIONS
                 *(.sti.text.dma_ctrl)
                 *(.sti.text)
                 *(.sti.data)
+                *(.sti.font.1)
+                *(.sti.font.2)
                 *(.sti.text.end)
                 . = ALIGN(4096);
                 _sti_rom_end = .;
