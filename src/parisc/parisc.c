@@ -1269,11 +1269,12 @@ static int pdc_block_tlb(unsigned int *arg)
 
     /* initialize return value in case qemu can't handle BTLBs via diag instruction */
     ret = PDC_BAD_OPTION;
+printf("SeaBIOS: BTLB %x %x %x\n", ARG0, ARG1, ARG2);
     asm(
-	"ldw -0*%2(%1),%%r26 ! ldw -1*%2(%1),%%r25 ! ldw -2*%2(%1),%%r24 ! ldw -3*%2(%1),%%r23\n" \
-	"ldw -4*%2(%1),%%r22 ! ldw -5*%2(%1),%%r21 ! ldw -6*%2(%1),%%r20 ! ldw -7*%2(%1),%%r19\n" \
+	"ldw (7-0)*%2(%1),%%r26 ! ldw (7-1)*%2(%1),%%r25 ! ldw (7-2)*%2(%1),%%r24 ! ldw (7-3)*%2(%1),%%r23\n" \
+	"ldw (7-4)*%2(%1),%%r22 ! ldw (7-5)*%2(%1),%%r21 ! ldw (7-6)*%2(%1),%%r20 ! ldw (7-7)*%2(%1),%%r19\n" \
 	"diag 0x100\n" \
-	"copy %%ret0,%1\n"
+	"copy %%ret0,%0\n"
 	: "=&r" (ret) : "r" (arg), "i" (sizeof(long)) : "r26", "r25", "r24", "r23", "r22", "r21", "r20", "r19" );
     return ret;
 }
