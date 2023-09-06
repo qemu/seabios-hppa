@@ -1263,15 +1263,6 @@ static int pdc_proc(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static void pdc_block_tlb_clear_all(void)
-{
-    /* make sure CPU BTLB is cleared */
-    asm("ldi %0,%%r26 ! ldi %1,%%r25 ! diag 0x100"
-        :
-        : "i" (PDC_BLOCK_TLB), "i" (PDC_BTLB_PURGE_ALL)
-        : "r28", "r26", "r25");
-}
-
 static int pdc_block_tlb(unsigned int *arg)
 {
     int ret;
@@ -2275,10 +2266,6 @@ void __VISIBLE start_parisc_firmware(void)
                 ram_size/1024/1024, MIN_RAM_SIZE/1024/1024);
         hlt();
     }
-
-    /* make sure CPU BTLB is cleared. OS should take care itself! */
-    if (0)
-        pdc_block_tlb_clear_all();
 
     // handle_post();
     serial_debug_preinit();
