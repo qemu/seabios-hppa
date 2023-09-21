@@ -986,8 +986,8 @@ static int pdc_model(unsigned int *arg)
 
     switch (option) {
         case PDC_MODEL_INFO:
-            memcpy(result, &current_machine->pdc_modelstr,
-			strlen(current_machine->pdc_modelstr)+1);
+            memcpy(result, &current_machine->pdc_model,
+			sizeof(current_machine->pdc_model));
             return PDC_OK;
         case PDC_MODEL_VERSIONS:
             switch (ARG3) {
