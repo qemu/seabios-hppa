@@ -25,7 +25,6 @@
 #include "vgahw.h"
 #include "parisc/hppa_hardware.h" // DINO_UART_BASE
 #include "parisc/pdc.h"
-#include "parisc/b160l.h"
 #include "parisc/sticore.h"
 #include "parisc/lasips2.h"
 
@@ -118,6 +117,7 @@ int pdc_console;
 int sti_font;
 
 char qemu_version[16] = "unknown version";
+char qemu_machine[16] = "B160L";
 
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
@@ -252,6 +252,8 @@ static struct pdc_module_path mod_path_emulated_drives = {
  * FIRMWARE IO Dependent Code (IODC) HANDLER
  ********************************************************/
 
+#define	MAX_DEVICES	HPPA_MAX_CPUS+16
+
 typedef struct {
     unsigned long hpa;
     struct pdc_iodc *iodc;
@@ -261,7 +263,34 @@ typedef struct {
     int add_addr[5];
 } hppa_device_t;
 
-static hppa_device_t parisc_devices[HPPA_MAX_CPUS+16] = { PARISC_DEVICE_LIST };
+#define CONCAT2(a, b) a ## b
+#define CONCAT(a, b) CONCAT2(a, b)
+
+struct machine_info {
+        char			pdc_modelstr[16];
+        struct pdc_model 	pdc_model;
+        int			pdc_version;
+        int			pdc_cpuid;
+        int			pdc_caps;
+        int			pdc_entry;
+        unsigned long		pdc_cache_info[30];
+        hppa_device_t		device_list[MAX_DEVICES];
+};
+
+/* create machine definitions */
+#define MACHINE	B160L
+#include "parisc/b160l.h"
+#include "parisc/machine-create.h"
+
+#if 1
+#define MACHINE	C3700
+#include "parisc/c3700.h"
+#include "parisc/machine-create.h"
+#endif
+
+struct machine_info *current_machine = &machine_B160L;
+
+static hppa_device_t *parisc_devices = machine_B160L.device_list;
 
 #define PARISC_KEEP_LIST \
     GSC_HPA,\
@@ -445,10 +474,10 @@ static void remove_parisc_devices(unsigned int num_cpus)
         t++;
     }
 
-    BUG_ON(t > ARRAY_SIZE(parisc_devices));
+    BUG_ON(t > MAX_DEVICES);
 
-    while (t < ARRAY_SIZE(parisc_devices)) {
-        memset(&parisc_devices[t], 0, sizeof(parisc_devices[0]));
+    while (t < MAX_DEVICES) {
+        memset(&parisc_devices[t], 0, sizeof(*parisc_devices));
         t++;
     }
 }
@@ -458,7 +487,7 @@ static int find_hpa_index(unsigned long hpa)
     int i;
     if (!hpa)
         return -1;
-    for (i = 0; i < (ARRAY_SIZE(parisc_devices)-1); i++) {
+    for (i = 0; i < (MAX_DEVICES-1); i++) {
         if (hpa == parisc_devices[i].hpa)
             return i;
         if (!parisc_devices[i].hpa)
@@ -496,7 +525,7 @@ static hppa_device_t *find_hppa_device_by_path(struct pdc_module_path *search,
     hppa_device_t *dev;
     int i;
 
-    for (i = 0; i < (ARRAY_SIZE(parisc_devices)-1); i++) {
+    for (i = 0; i < (MAX_DEVICES-1); i++) {
         dev = parisc_devices + i;
         if (!dev->hpa)
             continue;
@@ -949,17 +978,16 @@ static int pdc_pim(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static struct pdc_model model = { PARISC_PDC_MODEL };
-
 static int pdc_model(unsigned int *arg)
 {
-    static const char model_str[] = PARISC_MODEL;
+    const char *model_str = current_machine->pdc_modelstr;
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
 
     switch (option) {
         case PDC_MODEL_INFO:
-            memcpy(result, &model, sizeof(model));
+            memcpy(result, &current_machine->pdc_modelstr,
+			strlen(current_machine->pdc_modelstr)+1);
             return PDC_OK;
         case PDC_MODEL_VERSIONS:
             switch (ARG3) {
@@ -967,24 +995,24 @@ static int pdc_model(unsigned int *arg)
                     result[0] = 35; // TODO! ???
                     return PDC_OK;
                 case 1: /* return PDC version */
-                    result[0] = PARISC_PDC_VERSION;
+                    result[0] = current_machine->pdc_version;
                     return PDC_OK;
             }
             return -4; // invalid c_index
         case PDC_MODEL_SYSMODEL:
-            result[0] = sizeof(model_str) - 1;
-            strtcpy((char *)ARG4, model_str, sizeof(model_str));
+            result[0] = strlen(model_str);
+            strtcpy((char *)ARG4, model_str, result[0] + 1);
             return PDC_OK;
         case PDC_MODEL_ENSPEC:
         case PDC_MODEL_DISPEC:
-            if (ARG3 != model.pot_key)
+            if (ARG3 != current_machine->pdc_model.pot_key)
                 return -20;
             return PDC_OK;
         case PDC_MODEL_CPU_ID:
-            result[0] = PARISC_PDC_CPUID;
+            result[0] = current_machine->pdc_cpuid;
             return PDC_OK;
         case PDC_MODEL_CAPABILITIES:
-            result[0] = PARISC_PDC_CAPABILITIES;
+            result[0] = current_machine->pdc_caps;
             result[0] |= PDC_MODEL_OS32; /* we do support 32-bit */
             result[0] &= ~PDC_MODEL_OS64; /* but not 64-bit (yet) */
             return PDC_OK;
@@ -1000,13 +1028,11 @@ static int pdc_cache(unsigned int *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
-    static unsigned long cache_info[] = { PARISC_PDC_CACHE_INFO };
-    static struct pdc_cache_info *machine_cache_info
-        = (struct pdc_cache_info *) &cache_info;
+    struct pdc_cache_info *machine_cache_info
+        = (struct pdc_cache_info *) current_machine->pdc_cache_info;
 
     switch (option) {
         case PDC_CACHE_INFO:
-            BUG_ON(sizeof(cache_info) != sizeof(*machine_cache_info));
             machine_cache_info->it_size = tlb_entries;
             machine_cache_info->dt_size = tlb_entries;
             machine_cache_info->it_loop = 1;
@@ -1031,7 +1057,7 @@ static int pdc_cache(unsigned int *arg)
             machine_cache_info->dc_loop = 0;
 #endif
 
-            memcpy(result, cache_info, sizeof(cache_info));
+            memcpy(result, machine_cache_info, sizeof(*machine_cache_info));
             return PDC_OK;
         case PDC_CACHE_RET_SPID:	/* returns space-ID bits */
             memset(result, 0, 32 * sizeof(unsigned long));
@@ -1370,7 +1396,7 @@ static int pdc_system_map(unsigned int *arg)
     switch (option) {
         case PDC_FIND_MODULE:
             hpa_index = ARG4;
-            if (hpa_index >= ARRAY_SIZE(parisc_devices))
+            if (hpa_index >= MAX_DEVICES)
                 return PDC_NE_MOD; // Module not found
             hpa = parisc_devices[hpa_index].hpa;
             if (!hpa)
@@ -1389,7 +1415,7 @@ static int pdc_system_map(unsigned int *arg)
 
         case PDC_FIND_ADDRESS:
             hpa_index = ARG3;
-            if (hpa_index >= ARRAY_SIZE(parisc_devices))
+            if (hpa_index >= MAX_DEVICES)
                 return PDC_NE_MOD; // Module not found
             hpa = parisc_devices[hpa_index].hpa;
             if (!hpa)
@@ -2165,8 +2191,17 @@ void __VISIBLE start_parisc_firmware(void)
         mem_kbd_boot.hpa = PORT_SERIAL2 - 0x800;
     }
 
+    /* which machine shall we emulate? */
+    str = romfile_loadfile("/etc/hppa-machine", NULL);
+    if (!str)
+	str = "B160L";
+    if (strcmp(str, "C3700") == 0)
+        current_machine = &machine_C3700;
+    strtcpy(qemu_machine, str, sizeof(qemu_machine));
+
     tlb_entries = romfile_loadint("/etc/cpu/tlb_entries", 256);
     dprintf(0, "fw_cfg: TLB entries %d\n", tlb_entries);
+// hlt();
 
     powersw_ptr = (int *) (unsigned long)
         romfile_loadint("/etc/power-button-addr", (unsigned long)&powersw_nop);
@@ -2186,8 +2221,9 @@ void __VISIBLE start_parisc_firmware(void)
     /* 0,1 = default 8x16 font, 2 = 16x32 font */
     sti_font = romfile_loadstring_to_int("opt/font", 0);
 
-    model.sw_id = romfile_loadstring_to_int("opt/hostid", model.sw_id);
-    dprintf(0, "fw_cfg: machine hostid %lu\n", model.sw_id);
+    current_machine->pdc_model.sw_id = romfile_loadstring_to_int("opt/hostid",
+					current_machine->pdc_model.sw_id);
+    dprintf(0, "fw_cfg: machine hostid %lu\n", current_machine->pdc_model.sw_id);
 
     str = romfile_loadfile("/etc/qemu-version", NULL);
     if (str)
