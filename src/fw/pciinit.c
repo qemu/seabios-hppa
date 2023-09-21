@@ -536,6 +536,33 @@ static void dino_mem_addr_setup(struct pci_device *dev, void *arg)
     /* setup io address space */
     pci_io_low_end = 0xa000;
 }
+
+static int astro_pci_slot_get_irq(struct pci_device *pci, int pin)
+{
+    int bus = pci_bdf_to_bus(pci->bdf);
+    int slot = pci_bdf_to_dev(pci->bdf);
+    return (bus + 1) * 4 + (slot & 0x03);
+}
+
+static void astro_mem_addr_setup(struct pci_device *dev, void *arg)
+{
+    pcimem_start = LMMIO_DIST_BASE_ADDR;
+    pcimem_end   = pcimem_start + LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
+
+    MaxPCIBus = 4;
+    pci_slot_get_irq = astro_pci_slot_get_irq;
+
+    /* setup io address space */
+    pci_io_low_end = IOS_DIST_BASE_SIZE / ROPES_PER_IOC;
+}
+
+static void parisc_mem_addr_setup(struct pci_device *dev, void *arg)
+{
+    if (has_astro)
+        return astro_mem_addr_setup(dev, arg);
+    else
+        return dino_mem_addr_setup(dev, arg);
+}
 #endif /* CONFIG_PARISC */
 
 
@@ -558,7 +585,7 @@ static void pci_bios_init_platform(void)
     }
 
 #if CONFIG_PARISC
-    dino_mem_addr_setup(NULL, NULL);
+    parisc_mem_addr_setup(NULL, NULL);
 #endif
 }
 
@@ -608,7 +635,7 @@ pci_bios_init_bus_rec(int bus, u8 *pci_bus)
     int bdf;
     u16 class;
 
-    dprintf(1, "PCI: %s bus = 0x%x\n", __func__, bus);
+    // dprintf(1, "PCI: %s bus = 0x%x\n", __func__, bus);
 
     /* prevent accidental access to unintended devices */
     foreachbdf(bdf, bus) {
@@ -693,6 +720,7 @@ pci_bios_init_bus(void)
 
     pci_bios_init_bus_rec(0 /* host bus */, &pci_bus);
 
+dprintf(1,"EXTRA ROOTS %d\n", extraroots);
     if (extraroots) {
         while (pci_bus < 0xff) {
             pci_bus++;
@@ -900,7 +928,7 @@ static int pci_bios_check_devices(struct pci_bus *busses)
             busses[pci->secondary_bus].bus_dev = pci;
 
         struct pci_bus *bus = &busses[pci_bdf_to_bus(pci->bdf)];
-        if (!bus->bus_dev)
+        if (!bus->bus_dev && !CONFIG_PARISC)
             /*
              * Resources for all root busses go in busses[0]
              */
