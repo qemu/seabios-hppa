@@ -282,27 +282,20 @@ struct machine_info {
 #include "parisc/b160l.h"
 #include "parisc/machine-create.h"
 
-#if 1
 #define MACHINE	C3700
 #include "parisc/c3700.h"
 #include "parisc/machine-create.h"
-#endif
 
 struct machine_info *current_machine = &machine_B160L;
 
 static hppa_device_t *parisc_devices = machine_B160L.device_list;
 
 #define PARISC_KEEP_LIST \
-    GSC_HPA,\
-    DINO_HPA,\
     DINO_UART_HPA,\
     /* DINO_SCSI_HPA, */ \
-    LASI_HPA, \
     LASI_UART_HPA, \
     LASI_LAN_HPA, \
     LASI_LPT_HPA, \
-    CPU_HPA,\
-    MEMORY_HPA,\
     LASI_GFX_HPA,\
     LASI_PS2KBD_HPA, \
     LASI_PS2MOU_HPA, \
@@ -387,7 +380,7 @@ static const char *hpa_device_name(unsigned long hpa, int output)
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
 }
 
-static unsigned long keep_list[] = { PARISC_KEEP_LIST };
+static unsigned long keep_list[20] = { PARISC_KEEP_LIST };
 
 static void remove_from_keep_list(unsigned long hpa)
 {
@@ -410,6 +403,33 @@ static int keep_this_hpa(unsigned long hpa)
             return 1;
         i++;
     }
+    return 0;
+}
+
+/* walk all machine devices and add generic ones to the keep_list[] */
+static int keep_add_generic_devices(void)
+{
+    hppa_device_t *dev = current_machine->device_list;
+    int i = 0;
+
+    /* search end of list */
+    while (keep_list[i]) i++;
+
+    while (dev->hpa) {
+	switch (dev->iodc->type) {
+	case 0x0007:	/* GSC+ Port bridge */
+	case 0x004d:	/* Dino PCI bridge */
+	case 0x004b:	/* Core Bus adapter (LASI) */
+	case 0x0040:	/* CPU */
+	case 0x0041:	/* Memory */
+	case 0x000d:	/* Elroy PCI bridge */
+	case 0x000c:	/* Runway port */
+		keep_list[i++] = dev->hpa;
+	}
+	dev++;
+    }
+    BUG_ON(i >= ARRAY_SIZE(keep_list));
+
     return 0;
 }
 
@@ -2168,6 +2188,10 @@ void __VISIBLE start_parisc_firmware(void)
     /* Initialize malloc stack */
     malloc_preinit();
 
+    // set Qemu serial debug port
+    DebugOutputPort = PARISC_SERIAL_CONSOLE;
+    // PlatformRunningOn = PF_QEMU;  // emulate runningOnQEMU()
+
     /* Initialize qemu fw_cfg interface */
     PORT_QEMU_CFG_CTL = fw_cfg_port;
     qemu_cfg_init();
@@ -2197,6 +2221,7 @@ void __VISIBLE start_parisc_firmware(void)
 	str = "B160L";
     if (strcmp(str, "C3700") == 0)
         current_machine = &machine_C3700;
+    parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
 
     tlb_entries = romfile_loadint("/etc/cpu/tlb_entries", 256);
@@ -2288,6 +2313,7 @@ void __VISIBLE start_parisc_firmware(void)
     }
 
     /* Initialize device list */
+    keep_add_generic_devices();
     remove_parisc_devices(smp_cpus);
 
     /* Show list of HPA devices which are still returned by firmware. */
@@ -2299,10 +2325,6 @@ void __VISIBLE start_parisc_firmware(void)
     init_stable_storage();
 
     chassis_code = 0;
-
-    // set Qemu serial debug port
-    DebugOutputPort = PARISC_SERIAL_CONSOLE;
-    // PlatformRunningOn = PF_QEMU;  // emulate runningOnQEMU()
 
     cpu_hz = 100 * PAGE0->mem_10msec; /* Hz of this PARISC */
     dprintf(1, "\nPARISC SeaBIOS Firmware, %d x PA7300LC (PCX-L2) at %d.%06d MHz, %d MB RAM.\n",
