@@ -1035,7 +1035,10 @@ static int pdc_model(unsigned int *arg)
         case PDC_MODEL_CAPABILITIES:
             result[0] = current_machine->pdc_caps;
             result[0] |= PDC_MODEL_OS32; /* we do support 32-bit */
-            result[0] &= ~PDC_MODEL_OS64; /* but not 64-bit (yet) */
+            if (cpu_bit_width == 64) /* and maybe 64-bit */
+                result[0] |= PDC_MODEL_OS64;
+            else
+                result[0] &= ~PDC_MODEL_OS64;
             return PDC_OK;
         case PDC_MODEL_GET_INSTALL_KERNEL:
             // No need to provide a special install kernel during installation of HP-UX
