@@ -118,6 +118,7 @@ int sti_font;
 
 char qemu_version[16] = "unknown version";
 char qemu_machine[16] = "B160L";
+char cpu_bit_width;
 
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
@@ -2326,9 +2327,13 @@ void __VISIBLE start_parisc_firmware(void)
 
     chassis_code = 0;
 
+    // detect if we emulate a 32- or 64-bit CPU
+    asm("mtctl %0,%%cr11 ! mfctl %%cr11,%0\n" : "=&r" (i) : "0" (-1));
+    cpu_bit_width = (i == 63) ? 64 : 32;
+
     cpu_hz = 100 * PAGE0->mem_10msec; /* Hz of this PARISC */
-    dprintf(1, "\nPARISC SeaBIOS Firmware, %d x PA7300LC (PCX-L2) at %d.%06d MHz, %d MB RAM.\n",
-            smp_cpus, cpu_hz / 1000000, cpu_hz % 1000000,
+    dprintf(1, "\nPARISC SeaBIOS Firmware, %d x %d-bit PA-RISC CPU at %d.%06d MHz, %d MB RAM.\n",
+            smp_cpus, cpu_bit_width, cpu_hz / 1000000, cpu_hz % 1000000,
             ram_size/1024/1024);
 
     if (ram_size < MIN_RAM_SIZE) {
@@ -2368,8 +2373,10 @@ void __VISIBLE start_parisc_firmware(void)
                 " MHz    %s                 Functional            0 KB\n",
                 i < 10 ? " ":"", i, i?"Idle  ":"Active");
     printf("\n\n");
-    printf("  Available memory:     %u MB\n"
+    printf("  CPU arch:             %d-bit (%s)\n"
+            "  Available memory:     %u MB\n"
             "  Good memory required: %d MB\n\n",
+            cpu_bit_width, (cpu_bit_width == 64) ? "PA2.0" : "PA1.1",
             ram_size/1024/1024, MIN_RAM_SIZE/1024/1024);
 
     // search boot devices
