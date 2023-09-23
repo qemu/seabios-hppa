@@ -2373,10 +2373,10 @@ void __VISIBLE start_parisc_firmware(void)
                 " MHz    %s                 Functional            0 KB\n",
                 i < 10 ? " ":"", i, i?"Idle  ":"Active");
     printf("\n\n");
-    printf("  Emulated machine:     HP %s (%d x %d-bit %s PA-RISC CPU)\n"
+    printf("  Emulated machine:     HP %s (%d-bit %s)\n"
             "  Available memory:     %u MB\n"
             "  Good memory required: %d MB\n\n",
-            qemu_machine, smp_cpus, cpu_bit_width, (cpu_bit_width == 64) ? "PA2.0" : "PA1.1",
+            qemu_machine, cpu_bit_width, (cpu_bit_width == 64) ? "PA2.0" : "PA1.1",
             ram_size/1024/1024, MIN_RAM_SIZE/1024/1024);
 
     // search boot devices
