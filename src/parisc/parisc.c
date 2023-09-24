@@ -174,6 +174,12 @@ static unsigned int chassis_code = 0;
 int powersw_nop;
 int *powersw_ptr;
 
+/*
+ * Real time clock emulation
+ * Either LASI or Astro will provide access to an emulated RTC clock.
+ */
+int *rtc_ptr = (int *) (unsigned long) LASI_RTC_HPA;
+
 void __VISIBLE __noreturn hlt(void)
 {
     if (pdc_debug)
@@ -855,16 +861,6 @@ static void init_stable_storage(void)
     stable_storage[0x5f] = 0x0f;
 }
 
-static unsigned long lasi_rtc_read(void)
-{
-    return *(u32 *)LASI_RTC_HPA;
-}
-
-static void lasi_rtc_write(u32 val)
-{
-    *(u32 *)LASI_RTC_HPA = val;
-}
-
 /* values in PDC_CHASSIS */
 const char * const systat[] = {
     "Off", "Fault", "Test", "Initialize",
@@ -1207,11 +1203,11 @@ static int pdc_tod(unsigned int *arg)
 
     switch (option) {
         case PDC_TOD_READ:
-            result[0] = lasi_rtc_read();
+            result[0] = *rtc_ptr;
             result[1] = result[2] = result[3] = 0;
             return PDC_OK;
         case PDC_TOD_WRITE:
-            lasi_rtc_write(ARG2);
+            *rtc_ptr = ARG2;
             return PDC_OK;
         case 2: /* PDC_TOD_CALIBRATE_TIMERS */
             /* double-precision floating-point with frequency of Interval Timer in megahertz: */
@@ -2233,7 +2229,11 @@ void __VISIBLE start_parisc_firmware(void)
 // hlt();
 
     powersw_ptr = (int *) (unsigned long)
-        romfile_loadint("/etc/power-button-addr", (unsigned long)&powersw_nop);
+        romfile_loadint("/etc/hppa/power-button-addr", (unsigned long)&powersw_nop);
+
+    /* real-time-clock addr */
+    rtc_ptr = (int *) (unsigned long)
+        romfile_loadint("/etc/hppa/rtc-addr", (unsigned long) LASI_RTC_HPA);
 
     /* use -fw_cfg opt/pdc_debug,string=255 to enable all firmware debug infos */
     pdc_debug = romfile_loadstring_to_int("opt/pdc_debug", 0);
