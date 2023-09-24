@@ -2216,7 +2216,7 @@ void __VISIBLE start_parisc_firmware(void)
     }
 
     /* which machine shall we emulate? */
-    str = romfile_loadfile("/etc/hppa-machine", NULL);
+    str = romfile_loadfile("/etc/hppa/machine", NULL);
     if (!str)
 	str = "B160L";
     if (strcmp(str, "C3700") == 0)
