@@ -204,6 +204,8 @@ static inline u32 ror(u32 word, unsigned int shift)
         return (word >> (shift & 31)) | (word << ((-shift) & 31));
 }
 
+extern char has_astro; /* false for B160L machine with Dino PCI chip */
+
 #define pci_ioport_addr(port) ((port >= 0x1000)  && (port < FIRMWARE_START))
 
 static inline void outl(u32 value, portaddr_t port) {

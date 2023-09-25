@@ -119,6 +119,7 @@ int sti_font;
 char qemu_version[16] = "unknown version";
 char qemu_machine[16] = "B160L";
 char cpu_bit_width;
+char has_astro;
 
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
@@ -1540,7 +1541,6 @@ static int pdc_pci_index(unsigned int *arg)
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
     /* machines with Dino don't provide this info */
-    int has_astro = (current_machine != &machine_B160L);
     u32 *irt_table, i;
 
 #if 0
@@ -2252,8 +2252,10 @@ void __VISIBLE start_parisc_firmware(void)
     str = romfile_loadfile("/etc/hppa/machine", NULL);
     if (!str)
 	str = "B160L";
-    if (strcmp(str, "C3700") == 0)
+    if (strcmp(str, "C3700") == 0) {
         current_machine = &machine_C3700;
+        has_astro = 1;
+    }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
 
