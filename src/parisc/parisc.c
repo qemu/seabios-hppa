@@ -1561,9 +1561,9 @@ static int pdc_pci_index(unsigned int *arg)
     #define IRT_TABLE_ENTRIES 5
     #define IOSAPIC_HPA       0xfffffffffed30800ULL
     const u32 irt_table_const[2 * IRT_TABLE_ENTRIES] = {
-		 0x8b10000f, 0x30000002,
-		 0x8b10000f, 0x34000003,
-		 0x8b10000d, 0x3b000000,
+		 0x8b10000f, 0x00000002, // erstes byte
+		 0x8b10000f, 0x04000003,
+		 0x8b10000d, 0x08000000,
 		 0x8b10000f, 0x3c000001,
 		 0x8b10000f, 0x3c000001 };
 
