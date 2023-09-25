@@ -1539,25 +1539,58 @@ static int pdc_pci_index(unsigned int *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
+    /* machines with Dino don't provide this info */
+    int has_astro = (current_machine != &machine_B160L);
+    u32 *irt_table, i;
 
-    // dprintf(0, "\n\nSeaBIOS: PDC_PCI_INDEX(%lu) called with ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
+#if 0
+[    3.212566] iosapic Interrupt Routing Table (cell 0)
+[    3.282568] iosapic start = 0x1302f980 num_entries 5 entry_size 16
+[    3.362568] iosapic 8b10000f30000002 fffffffffed30800 -   8b 10 00 0f 30 00 00 02 fffffffffed30800
+[    3.482568] iosapic 8b10000f34000003 fffffffffed30800 -   8b 10 00 0f 34 00 00 03 fffffffffed30800
+[    3.592568] iosapic 8b10000d3b000000 fffffffffed30800 -   8b 10 00 0d 3b 00 00 00 fffffffffed30800
+[    3.712568] iosapic 8b10000f3c000001 fffffffffed30800 -   8b 10 00 0f 3c 00 00 01 fffffffffed30800
+[    3.832568] iosapic 8b10000f3c000001 fffffffffed30800 -   8b 10 00 0f 3c 00 00 01 fffffffffed30800
+                printk(MODULE_NAME " %016llx %016llx -   %02x %02x %02x %02x %02x %02x %02x %02x %08x%08x\n",
+                p1[0], p1[1],
+                p->entry_type, p->entry_length, p->interrupt_type, p->polarity_trigger,
+		p->src_bus_irq_devno, p->src_bus_id, p->src_seg_id, p->dest_iosapic_intin,
+                ((u32 *) p)[2],
+                ((u32 *) p)[3]
+#endif
+    #define IRT_TABLE_ENTRIES 5
+    #define IOSAPIC_HPA       0xfffffffffed30800ULL
+    const u32 irt_table_const[2 * IRT_TABLE_ENTRIES] = {
+		 0x8b10000f, 0x30000002,
+		 0x8b10000f, 0x34000003,
+		 0x8b10000d, 0x3b000000,
+		 0x8b10000f, 0x3c000001,
+		 0x8b10000f, 0x3c000001 };
+
+    dprintf(0, "\n\nSeaBIOS: PDC_PCI_INDEX(%lu) called with ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
     switch (option) {
         case PDC_PCI_INTERFACE_INFO:
             memset(result, 0, 32 * sizeof(unsigned long));
+            BUG_ON(1);
             result[0] = 2;  /* XXX physical hardware returns those ?!? */
-            result[16] = 0x60;
-            result[17] = 0x90;
             return PDC_OK;
         case PDC_PCI_GET_INT_TBL_SIZE:
+            result[0] = IRT_TABLE_ENTRIES;
+            return has_astro ? PDC_OK : PDC_BAD_OPTION;
         case PDC_PCI_GET_INT_TBL:
-            memset(result, 0, 32 * sizeof(unsigned long));
-            result[0] = 2; /* Hardware fills in, even though we return PDC_BAD_OPTION below. */
-            result[16] = 0x60;
-            result[17] = 0x90;
-            return PDC_BAD_OPTION;
+            result[0] = IRT_TABLE_ENTRIES;
+            irt_table = (u32 *) ARG4; /* ptr to irt table */
+            for (i = 0; i < IRT_TABLE_ENTRIES; i++) {
+                *irt_table++ = irt_table_const[2 * i];
+                *irt_table++ = irt_table_const[2 * i + 1];
+                *irt_table++ = IOSAPIC_HPA >> 32;
+                *irt_table++ = (u32) IOSAPIC_HPA;
+            }
+            return has_astro ? PDC_OK : PDC_BAD_OPTION;
         case PDC_PCI_PCI_PATH_TO_PCI_HPA:
-            result[0] = PCI_HPA;
-            return PDC_OK;
+            BUG_ON(1);
+            result[0] = has_astro ? 0xfed00000 : PCI_HPA;
+            return has_astro ? PDC_OK : PDC_BAD_OPTION;
         case PDC_PCI_PCI_HPA_TO_PCI_PATH:
             BUG_ON(1);
     }
