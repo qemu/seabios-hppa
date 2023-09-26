@@ -120,6 +120,9 @@ char qemu_version[16] = "unknown version";
 char qemu_machine[16] = "B160L";
 char cpu_bit_width;
 char has_astro;
+unsigned long hppa_port_pci_cmd  = (PCI_HPA + DINO_PCI_ADDR);
+unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
+
 
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
@@ -2255,6 +2258,8 @@ void __VISIBLE start_parisc_firmware(void)
     if (strcmp(str, "C3700") == 0) {
         current_machine = &machine_C3700;
         has_astro = 1;
+        hppa_port_pci_cmd = 0xfed30000 + 0x040;
+        hppa_port_pci_data = hppa_port_pci_cmd + 8;
     }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
@@ -2392,7 +2397,7 @@ void __VISIBLE start_parisc_firmware(void)
     pci_setup();
 
     serial_setup();
-    block_setup();
+//    block_setup();
 
     PAGE0->vec_rendz = 0; /* No rendezvous yet. Add MEM_RENDEZ_HI later */
 

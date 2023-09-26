@@ -545,16 +545,13 @@ static int astro_pci_slot_get_irq(struct pci_device *pci, int pin)
 
 static void astro_mem_addr_setup(struct pci_device *dev, void *arg)
 {
-    pcimem_start = 0xf4000000ULL;
-    pcimem_end   = pcimem_start + 0x4000000ULL;
-
-//    outl(0x00000080, DINO_HPA + 0x038); /* IO_CONTROL - enable DINO PCI */
-//    outl(0x7ffffffe, DINO_HPA + 0x060); /* Set DINO_IO_ADDR_EN */
+    pcimem_start = LMMIO_DIST_BASE_ADDR;
+    pcimem_end   = pcimem_start + LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
 
     pci_slot_get_irq = astro_pci_slot_get_irq;
 
     /* setup io address space */
-    pci_io_low_end = 0x40000;
+    pci_io_low_end = IOS_DIST_BASE_SIZE / ROPES_PER_IOC;
 }
 
 static void parisc_mem_addr_setup(struct pci_device *dev, void *arg)

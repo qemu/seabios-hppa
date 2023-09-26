@@ -31,8 +31,23 @@ static u32 ioconfig_cmd(u16 bdf, u32 addr)
     return 0x80000000 | (bdf << 8) | (addr & 0xfc);
 }
 
+/*
+ * Memory mapped I/O
+ *
+ * readX()/writeX() do byteswapping and take an ioremapped address
+ * __raw_readX()/__raw_writeX() don't byteswap and take an ioremapped address.
+ * gsc_*() don't byteswap and operate on physical addresses;
+ *   eg dev->hpa or 0xfee00000.
+ */
+
+#define _pciport(x) (void *)((unsigned long)(x))
+
 void pci_config_writel(u16 bdf, u32 addr, u32 val)
 {
+    if (has_astro) {
+        writel(_pciport(PORT_PCI_CMD), ioconfig_cmd(bdf, addr));
+        writel(_pciport(PORT_PCI_DATA), val);
+    } else
     if (!MODESEGMENT && mmconfig) {
         writel(mmconfig_addr(bdf, addr), val);
     } else {
@@ -43,6 +58,10 @@ void pci_config_writel(u16 bdf, u32 addr, u32 val)
 
 void pci_config_writew(u16 bdf, u32 addr, u16 val)
 {
+    if (has_astro) {
+        writel(_pciport(PORT_PCI_CMD), ioconfig_cmd(bdf, addr));
+        writew(_pciport(PORT_PCI_DATA + (addr & 2)), val);
+    } else
     if (!MODESEGMENT && mmconfig) {
         writew(mmconfig_addr(bdf, addr), val);
     } else {
@@ -53,6 +72,10 @@ void pci_config_writew(u16 bdf, u32 addr, u16 val)
 
 void pci_config_writeb(u16 bdf, u32 addr, u8 val)
 {
+    if (has_astro) {
+        writel(_pciport(PORT_PCI_CMD), ioconfig_cmd(bdf, addr));
+        writeb(_pciport(PORT_PCI_DATA + (addr & 3)), val);
+    } else
     if (!MODESEGMENT && mmconfig) {
         writeb(mmconfig_addr(bdf, addr), val);
     } else {
@@ -63,6 +86,10 @@ void pci_config_writeb(u16 bdf, u32 addr, u8 val)
 
 u32 pci_config_readl(u16 bdf, u32 addr)
 {
+    if (has_astro) {
+        writel(_pciport(PORT_PCI_CMD), ioconfig_cmd(bdf, addr));
+        return readl(_pciport(PORT_PCI_DATA));
+    } else
     if (!MODESEGMENT && mmconfig) {
         return readl(mmconfig_addr(bdf, addr));
     } else {
@@ -73,6 +100,10 @@ u32 pci_config_readl(u16 bdf, u32 addr)
 
 u16 pci_config_readw(u16 bdf, u32 addr)
 {
+    if (has_astro) {
+        writel(_pciport(PORT_PCI_CMD), ioconfig_cmd(bdf, addr));
+        return readw(_pciport(PORT_PCI_DATA + (addr & 2)));
+    } else
     if (!MODESEGMENT && mmconfig) {
         return readw(mmconfig_addr(bdf, addr));
     } else {
@@ -83,6 +114,10 @@ u16 pci_config_readw(u16 bdf, u32 addr)
 
 u8 pci_config_readb(u16 bdf, u32 addr)
 {
+    if (has_astro) {
+        writel(_pciport(PORT_PCI_CMD), ioconfig_cmd(bdf, addr));
+        return readb(_pciport(PORT_PCI_DATA + (addr & 3)));
+    } else
     if (!MODESEGMENT && mmconfig) {
         return readb(mmconfig_addr(bdf, addr));
     } else {

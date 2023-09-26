@@ -205,10 +205,19 @@ static inline u32 ror(u32 word, unsigned int shift)
 }
 
 extern char has_astro; /* false for B160L machine with Dino PCI chip */
+extern unsigned long hppa_port_pci_cmd;
+extern unsigned long hppa_port_pci_data;
+
 
 #define pci_ioport_addr(port) ((port >= 0x1000)  && (port < FIRMWARE_START))
+#define is_astro_ioport(port) (has_astro && (port < IOS_DIST_BASE_SIZE))
+
+#define astro_ioport_addr(port) ((void *)(portaddr_t)(IOS_DIST_BASE_ADDR + port))
 
 static inline void outl(u32 value, portaddr_t port) {
+    if (is_astro_ioport(port))
+        *(volatile u32 *)(astro_ioport_addr(port)) = cpu_to_le32(value);
+    else
     if (!pci_ioport_addr(port)) {
         *(volatile u32 *)(port) = be32_to_cpu(value);
     } else {
@@ -220,6 +229,9 @@ static inline void outl(u32 value, portaddr_t port) {
 }
 
 static inline void outw(u16 value, portaddr_t port) {
+    if (is_astro_ioport(port))
+        *(volatile u16 *)(astro_ioport_addr(port)) = cpu_to_le16(value);
+    else
     if (!pci_ioport_addr(port)) {
         *(volatile u16 *)(port) = be16_to_cpu(value);
     } else {
@@ -231,7 +243,7 @@ static inline void outw(u16 value, portaddr_t port) {
 }
 
 static inline void outb(u8 value, portaddr_t port) {
-    if (!pci_ioport_addr(port)) {
+    if (has_astro || !pci_ioport_addr(port)) {
 	*(volatile u8 *)(port) = value;
     } else {
 	/* write PCI I/O address to Dino's PCI_CONFIG_ADDR */
@@ -242,7 +254,7 @@ static inline void outb(u8 value, portaddr_t port) {
 }
 
 static inline u8 inb(portaddr_t port) {
-    if (!pci_ioport_addr(port)) {
+    if (has_astro || !pci_ioport_addr(port)) {
         return *(volatile u8 *)(port);
     } else {
 	/* write PCI I/O address to Dino's PCI_CONFIG_ADDR */
@@ -253,6 +265,9 @@ static inline u8 inb(portaddr_t port) {
 }
 
 static inline u16 inw(portaddr_t port) {
+    if (is_astro_ioport(port))
+            return le16_to_cpu(*(volatile u16 *)(astro_ioport_addr(port)));
+    else
     if (!pci_ioport_addr(port)) {
         return *(volatile u16 *)(port);
     } else {
@@ -263,6 +278,9 @@ static inline u16 inw(portaddr_t port) {
     }
 }
 static inline u32 inl(portaddr_t port) {
+    if (is_astro_ioport(port))
+            return (le32_to_cpu(*(volatile u32 *)(astro_ioport_addr(port))));
+    else
     if (!pci_ioport_addr(port)) {
         return *(volatile u32 *)(port);
     } else {
@@ -323,13 +341,15 @@ static inline void smp_wmb(void) {
     barrier();
 }
 
+/*  readX()/writeX() do byteswapping */
+
 static inline void writel(void *addr, u32 val) {
     barrier();
-    *(volatile u32 *)addr = val;
+    *(volatile u32 *)addr = cpu_to_le32(val);
 }
 static inline void writew(void *addr, u16 val) {
     barrier();
-    *(volatile u16 *)addr = val;
+    *(volatile u16 *)addr = cpu_to_le16(val);
 }
 static inline void writeb(void *addr, u8 val) {
     barrier();
@@ -338,17 +358,17 @@ static inline void writeb(void *addr, u8 val) {
 static inline u64 readq(const void *addr) {
     u64 val = *(volatile const u64 *)addr;
     barrier();
-    return val;
+    return le64_to_cpu(val);
 }
 static inline u32 readl(const void *addr) {
     u32 val = *(volatile const u32 *)addr;
     barrier();
-    return val;
+    return le32_to_cpu(val);
 }
 static inline u16 readw(const void *addr) {
     u16 val = *(volatile const u16 *)addr;
     barrier();
-    return val;
+    return le16_to_cpu(val);
 }
 static inline u8 readb(const void *addr) {
     u8 val = *(volatile const u8 *)addr;
