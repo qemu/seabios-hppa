@@ -462,7 +462,7 @@ static void remove_parisc_devices(unsigned int num_cpus)
 
     /* check if qemu emulates LASI chip (LASI_IAR exists) */
     if (*(unsigned long *)(LASI_HPA+16) == 0) {
-        remove_from_keep_list(LASI_UART_HPA);
+        /* remove_from_keep_list(LASI_UART_HPA); keep for HP-UX at bootup */
         remove_from_keep_list(LASI_LAN_HPA);
         remove_from_keep_list(LASI_LPT_HPA);
     } else {
@@ -1007,7 +1007,13 @@ static int pdc_model(unsigned int *arg)
 
     switch (option) {
         case PDC_MODEL_INFO:
-            memcpy(result, &current_machine->pdc_model,
+            /*
+             * In case we run on a 32-bit only emulation, avoid a kernel crash
+             * with old qemu versions which will try to run 64-bit instructions
+             * kernel sr_disable_hash() function
+             */
+            memcpy(result, (cpu_bit_width != 64) ?
+                    &machine_B160L.pdc_model : &current_machine->pdc_model,
 			sizeof(current_machine->pdc_model));
             return PDC_OK;
         case PDC_MODEL_VERSIONS:
@@ -1031,6 +1037,9 @@ static int pdc_model(unsigned int *arg)
             return PDC_OK;
         case PDC_MODEL_CPU_ID:
             result[0] = current_machine->pdc_cpuid;
+            /* if CPU does not support 64bits, use the B160L CPUID */
+            if (cpu_bit_width != 64)
+                result[0] = machine_B160L.pdc_cpuid;
             return PDC_OK;
         case PDC_MODEL_CAPABILITIES:
             result[0] = current_machine->pdc_caps;
@@ -2221,6 +2230,10 @@ void __VISIBLE start_parisc_firmware(void)
     char bootdrive = (char)cmdline; // c = hdd, d = CD/DVD
     show_boot_menu = (linux_kernel_entry == 1);
 
+    // detect if we emulate a 32- or 64-bit CPU
+    asm("mtctl %0,%%cr11 ! mfctl %%cr11,%0\n" : "=&r" (i) : "0" (-1));
+    cpu_bit_width = (i == 63) ? 64 : 32;
+
     if (smp_cpus > HPPA_MAX_CPUS)
         smp_cpus = HPPA_MAX_CPUS;
     num_online_cpus = smp_cpus;
@@ -2376,10 +2389,6 @@ void __VISIBLE start_parisc_firmware(void)
     init_stable_storage();
 
     chassis_code = 0;
-
-    // detect if we emulate a 32- or 64-bit CPU
-    asm("mtctl %0,%%cr11 ! mfctl %%cr11,%0\n" : "=&r" (i) : "0" (-1));
-    cpu_bit_width = (i == 63) ? 64 : 32;
 
     cpu_hz = 100 * PAGE0->mem_10msec; /* Hz of this PARISC */
     dprintf(1, "\nPARISC SeaBIOS Firmware, %d x %d-bit PA-RISC CPU at %d.%06d MHz, %d MB RAM.\n",

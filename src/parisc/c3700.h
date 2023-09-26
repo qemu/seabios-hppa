@@ -4,14 +4,11 @@
 
 #define PARISC_MODEL "9000/785/C3700"
 
-// this is original c3700:
-// #define PARISC_PDC_MODEL 0x5dc0, 0x481, 0x0, 0x2, 0x777c3e84, 0x100000f0, 0x8, 0xb2, 0xb2
-// HACK: this is B160L (to avoid kernel crash with old qemu which tries to run 64-bit instruction in sr_disable_hash)
-#define PARISC_PDC_MODEL 0x5020, 0x481, 0x0, 0x2020202, 0x7794d7fe, 0x100000f0, 0x4, 0xba, 0xba
+#define PARISC_PDC_MODEL 0x5dc0, 0x481, 0x0, 0x2, 0x777c3e84, 0x100000f0, 0x8, 0xb2, 0xb2
 
 #define PARISC_PDC_VERSION 0x0301
 
-#define PARISC_PDC_CPUID 0x026b
+#define PARISC_PDC_CPUID 0x01e8
 
 #define PARISC_PDC_CAPABILITIES 0x0007
 
