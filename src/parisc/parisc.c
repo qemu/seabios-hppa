@@ -1577,7 +1577,7 @@ static int pdc_pci_index(unsigned int *arg)
 		 0x8b10000f, 0x3c000001,
 		 0x8b10000f, 0x3c000001 };
 
-    dprintf(0, "\n\nSeaBIOS: PDC_PCI_INDEX(%lu) called with ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
+    // dprintf(0, "\n\nSeaBIOS: PDC_PCI_INDEX(%lu) called with ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
     switch (option) {
         case PDC_PCI_INTERFACE_INFO:
             memset(result, 0, 32 * sizeof(unsigned long));

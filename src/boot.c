@@ -50,7 +50,7 @@ glob_prefix(const char *glob, const char *str)
 }
 
 #if CONFIG_PARISC
-#define FW_PCI_DOMAIN (has_astro ? "/astro-pcihost" : "/dino-pcihost")
+#define FW_PCI_DOMAIN (has_astro ? "/elroy-pcihost" : "/dino-pcihost")
 #else
 #define FW_PCI_DOMAIN "/pci@i0cf8"
 #endif
