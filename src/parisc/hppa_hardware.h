@@ -52,11 +52,11 @@
 
 
 /* ASTRO Memory and I/O regions */
-#define LMMIO_DIST_BASE_ADDR      0xf4000000ULL
-#define LMMIO_DIST_BASE_SIZE       0x4000000ULL
+#define LMMIO_DIST_BASE_ADDR      0xf4000000UL
+#define LMMIO_DIST_BASE_SIZE       0x4000000UL
 
-#define IOS_DIST_BASE_ADDR      0xfffee00000ULL
-#define IOS_DIST_BASE_SIZE           0x10000ULL
+#define IOS_DIST_BASE_ADDR        0xfee00000UL
+#define IOS_DIST_BASE_SIZE           0x10000UL
 
 #define ROPES_PER_IOC           8       /* per Ike half or Pluto/Astro */
 

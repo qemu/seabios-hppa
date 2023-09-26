@@ -1043,6 +1043,13 @@ static int pdc_model(unsigned int *arg)
         case PDC_MODEL_GET_INSTALL_KERNEL:
             // No need to provide a special install kernel during installation of HP-UX
             return PDC_BAD_OPTION;
+        case PDC_MODEL_GET_PLATFORM_INFO:
+            model_str = has_astro ? "A6057A" : "9000/778";
+            strtcpy((char *)ARG2, model_str, 16);
+            strtcpy((char *)ARG3, model_str, 16);
+            /* use: current_machine->pdc_model.sw_id ? */
+            strtcpy((char *)ARG4, "001122334455", 16);
+            return PDC_OK;
     }
     dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_MODEL function %d %x %x %x %x\n", ARG1, ARG2, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
@@ -2397,7 +2404,7 @@ void __VISIBLE start_parisc_firmware(void)
     pci_setup();
 
     serial_setup();
-//    block_setup();
+    block_setup();
 
     PAGE0->vec_rendz = 0; /* No rendezvous yet. Add MEM_RENDEZ_HI later */
 

@@ -216,7 +216,7 @@ extern unsigned long hppa_port_pci_data;
 
 static inline void outl(u32 value, portaddr_t port) {
     if (is_astro_ioport(port))
-        *(volatile u32 *)(astro_ioport_addr(port)) = cpu_to_le32(value);
+        *(volatile u32 *)(astro_ioport_addr(port)) = value;
     else
     if (!pci_ioport_addr(port)) {
         *(volatile u32 *)(port) = be32_to_cpu(value);
@@ -230,7 +230,7 @@ static inline void outl(u32 value, portaddr_t port) {
 
 static inline void outw(u16 value, portaddr_t port) {
     if (is_astro_ioport(port))
-        *(volatile u16 *)(astro_ioport_addr(port)) = cpu_to_le16(value);
+        *(volatile u16 *)(astro_ioport_addr(port)) = value;
     else
     if (!pci_ioport_addr(port)) {
         *(volatile u16 *)(port) = be16_to_cpu(value);
@@ -243,7 +243,10 @@ static inline void outw(u16 value, portaddr_t port) {
 }
 
 static inline void outb(u8 value, portaddr_t port) {
-    if (has_astro || !pci_ioport_addr(port)) {
+    if (is_astro_ioport(port))
+        *(volatile u8 *)(astro_ioport_addr(port)) = value;
+    else
+    if (!pci_ioport_addr(port)) {
 	*(volatile u8 *)(port) = value;
     } else {
 	/* write PCI I/O address to Dino's PCI_CONFIG_ADDR */
@@ -254,6 +257,9 @@ static inline void outb(u8 value, portaddr_t port) {
 }
 
 static inline u8 inb(portaddr_t port) {
+    if (is_astro_ioport(port))
+        return *(volatile u8 *)(astro_ioport_addr(port));
+    else
     if (has_astro || !pci_ioport_addr(port)) {
         return *(volatile u8 *)(port);
     } else {
@@ -266,7 +272,7 @@ static inline u8 inb(portaddr_t port) {
 
 static inline u16 inw(portaddr_t port) {
     if (is_astro_ioport(port))
-            return le16_to_cpu(*(volatile u16 *)(astro_ioport_addr(port)));
+        return *(volatile u16 *)(astro_ioport_addr(port));
     else
     if (!pci_ioport_addr(port)) {
         return *(volatile u16 *)(port);
@@ -279,7 +285,7 @@ static inline u16 inw(portaddr_t port) {
 }
 static inline u32 inl(portaddr_t port) {
     if (is_astro_ioport(port))
-            return (le32_to_cpu(*(volatile u32 *)(astro_ioport_addr(port))));
+        return *(volatile u32 *)(astro_ioport_addr(port));
     else
     if (!pci_ioport_addr(port)) {
         return *(volatile u32 *)(port);
