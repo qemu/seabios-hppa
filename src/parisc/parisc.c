@@ -1555,12 +1555,6 @@ static int pdc_lan_station_id(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_pci_index(unsigned int *arg)
-{
-    unsigned long option = ARG1;
-    unsigned long *result = (unsigned long *)ARG2;
-    /* machines with Dino don't provide this info */
-    u32 *irt_table, i;
 
 #if 0
 [    3.212566] iosapic Interrupt Routing Table (cell 0)
@@ -1577,14 +1571,44 @@ static int pdc_pci_index(unsigned int *arg)
                 ((u32 *) p)[2],
                 ((u32 *) p)[3]
 #endif
-    #define IRT_TABLE_ENTRIES 5
-    #define IOSAPIC_HPA       0xfffffffffed30800ULL
-    const u32 irt_table_const[2 * IRT_TABLE_ENTRIES] = {
-		 0x8b10000f, 0x00000002, // erstes byte
-		 0x8b10000f, 0x04000003,
-		 0x8b10000d, 0x08000000,
-		 0x8b10000f, 0x3c000001,
-		 0x8b10000f, 0x3c000001 };
+#define IRT_TABLE_ENTRIES 24
+#define IOSAPIC_HPA       0xfffffffffed30800ULL
+static int irt_table_entries;
+static u32 irt_table[IRT_TABLE_ENTRIES * 16/sizeof(u32)];
+
+static void iosapic_table_setup(void)
+{
+    struct pci_device *pci;
+    u32 *p;
+    u8 slot = 0, iosapic_intin = 0, irq_devno, bus_id;
+
+    irt_table_entries = 0;
+    memset(irt_table, 0, sizeof(irt_table));
+    p = irt_table;
+
+    foreachpci(pci) {
+        // if (!pci->irq) continue;
+        BUG_ON(irt_table_entries >= IRT_TABLE_ENTRIES);
+        irt_table_entries++;
+        dprintf(5, "IRT ENTRY #%d: bdf %02x\n", irt_table_entries, pci->bdf);
+        /* write the 16 bytes */
+        /* 1: entry_type, entry_length, interrupt_type, polarity_trigger */
+        *p++ = 0x8b10000f;      // oder 0x8b10000d
+        /* 2: src_bus_irq_devno, src_bus_id, src_seg_id, dest_iosapic_intin */
+        /* irq_devno = (slot << 2) | (intr_pin-1); */
+        irq_devno = (slot++ << 2) | (pci->irq - 1);
+        bus_id = 0;
+        *p++ = (irq_devno << 24) | (bus_id << 16) | (0 << 8) | (iosapic_intin << 0);
+        *p++ = IOSAPIC_HPA >> 32;
+        *p++ = (u32) IOSAPIC_HPA;
+    }
+}
+
+static int pdc_pci_index(unsigned int *arg)
+{
+    unsigned long option = ARG1;
+    unsigned long *result = (unsigned long *)ARG2;
+    /* machines with Dino don't provide this info */
 
     // dprintf(0, "\n\nSeaBIOS: PDC_PCI_INDEX(%lu) called with ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
     switch (option) {
@@ -1594,18 +1618,17 @@ static int pdc_pci_index(unsigned int *arg)
             result[0] = 2;  /* XXX physical hardware returns those ?!? */
             return PDC_OK;
         case PDC_PCI_GET_INT_TBL_SIZE:
-            result[0] = IRT_TABLE_ENTRIES;
-            return has_astro ? PDC_OK : PDC_BAD_OPTION;
+            if (!has_astro)
+                return PDC_BAD_OPTION;
+            result[0] = irt_table_entries;
+            return PDC_OK;
         case PDC_PCI_GET_INT_TBL:
-            result[0] = IRT_TABLE_ENTRIES;
-            irt_table = (u32 *) ARG4; /* ptr to irt table */
-            for (i = 0; i < IRT_TABLE_ENTRIES; i++) {
-                *irt_table++ = irt_table_const[2 * i];
-                *irt_table++ = irt_table_const[2 * i + 1];
-                *irt_table++ = IOSAPIC_HPA >> 32;
-                *irt_table++ = (u32) IOSAPIC_HPA;
-            }
-            return has_astro ? PDC_OK : PDC_BAD_OPTION;
+            if (!has_astro)
+                return PDC_BAD_OPTION;
+            result[0] = irt_table_entries;
+            /* ARG4 is ptr to irt table */
+            memcpy((void *)ARG4, irt_table, irt_table_entries * 16);
+            return PDC_OK;
         case PDC_PCI_PCI_PATH_TO_PCI_HPA:
             BUG_ON(1);
             result[0] = has_astro ? 0xfed00000 : PCI_HPA;
@@ -2411,6 +2434,7 @@ void __VISIBLE start_parisc_firmware(void)
     // coreboot_preinit();
 
     pci_setup();
+    iosapic_table_setup();
 
     serial_setup();
     block_setup();
