@@ -2278,8 +2278,8 @@ void __VISIBLE start_parisc_firmware(void)
     if (strcmp(str, "C3700") == 0) {
         current_machine = &machine_C3700;
         has_astro = 1;
-        hppa_port_pci_cmd = 0xfed30000 + 0x040;
-        hppa_port_pci_data = hppa_port_pci_cmd + 8;
+        hppa_port_pci_cmd  = 0xfed30000 + 0x040;
+        hppa_port_pci_data = 0xfed30000 + 0x048;
     }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));

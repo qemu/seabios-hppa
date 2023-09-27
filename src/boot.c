@@ -178,7 +178,7 @@ loadBiosGeometry(void)
 static BootDeviceLCHS *
 boot_lchs_find(const char *glob)
 {
-    dprintf(1, "Searching bios-geometry for: %s\n", glob);
+    // dprintf(1, "Searching bios-geometry for: %s\n", glob);
     int i;
     for (i = 0; i < BiosGeometryCount; i++)
         if (glob_prefix(glob, BiosGeometry[i].name))
@@ -291,7 +291,7 @@ loadBootOrder(void)
 static int
 find_prio(const char *glob)
 {
-    dprintf(1, "Searching bootorder for: %s\n", glob);
+    // dprintf(1, "Searching bootorder for: %s\n", glob);
     int i;
     for (i = 0; i < BootorderCount; i++)
         if (glob_prefix(glob, Bootorder[i]))
