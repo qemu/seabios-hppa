@@ -1573,6 +1573,7 @@ static int pdc_lan_station_id(unsigned int *arg)
 #endif
 #define IRT_TABLE_ENTRIES 24
 #define IOSAPIC_HPA       0xfffffffffed30800ULL
+#define ELROY_IRQS        8 /* IOSAPIC IRQs */
 static int irt_table_entries;
 static u32 irt_table[IRT_TABLE_ENTRIES * 16/sizeof(u32)];
 
@@ -1601,6 +1602,8 @@ static void iosapic_table_setup(void)
         *p++ = (irq_devno << 24) | (bus_id << 16) | (0 << 8) | (iosapic_intin << 0);
         *p++ = IOSAPIC_HPA >> 32;
         *p++ = (u32) IOSAPIC_HPA;
+        iosapic_intin++;
+        iosapic_intin &= (ELROY_IRQS - 1 );
     }
 }
 
