@@ -1346,6 +1346,10 @@ static int pdc_block_tlb(unsigned int *arg)
 {
     int ret;
 
+    /* Block TLB is only supported on 32-bit CPUs */
+    if (cpu_bit_width != 32)
+        return PDC_BAD_PROC;
+
     asm(
 	"ldw (7-0)*%2(%1),%%r26 ! ldw (7-1)*%2(%1),%%r25 ! ldw (7-2)*%2(%1),%%r24 ! ldw (7-3)*%2(%1),%%r23\n"
 	"ldw (7-4)*%2(%1),%%r22 ! ldw (7-5)*%2(%1),%%r21 ! ldw (7-6)*%2(%1),%%r20 ! ldw (7-7)*%2(%1),%%r19\n"
@@ -2259,9 +2263,12 @@ void __VISIBLE start_parisc_firmware(void)
     char bootdrive = (char)cmdline; // c = hdd, d = CD/DVD
     show_boot_menu = (linux_kernel_entry == 1);
 
-    // detect if we emulate a 32- or 64-bit CPU
-    asm("mtctl %0,%%cr11 ! mfctl %%cr11,%0\n" : "=&r" (i) : "0" (-1));
-    cpu_bit_width = (i == 63) ? 64 : 32;
+    // detect if we emulate a 32- or 64-bit CPU.
+    // set all bits in cr11, read back, and if the return
+    // value is 63 this is a 64-bit capable CPU.
+    // A 32-bit only CPU returns 31.
+    mtctl(-1UL, 11);
+    cpu_bit_width = (mfctl(11) == 63) ? 64 : 32;
 
     if (smp_cpus > HPPA_MAX_CPUS)
         smp_cpus = HPPA_MAX_CPUS;
