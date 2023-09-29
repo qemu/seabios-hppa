@@ -1649,6 +1649,9 @@ static int pdc_initiator(unsigned int *arg)
 
     switch (option) {
         case PDC_GET_INITIATOR:
+            /* SCSI controller is on normal PCI bus on machines with Astro */
+            if (has_astro)
+                return PDC_BAD_OPTION;
             // ARG3 points to the hwpath of device for which initiator is asked for.
             result[0] = 7;  // initiator_id/host_id: 7 to 15.
             result[1] = 10; // scsi_rate: 1, 2, 5 or 10 for 5, 10, 20 or 40 MT/s
