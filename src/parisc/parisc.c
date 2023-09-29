@@ -218,8 +218,10 @@ void __VISIBLE __noreturn reset(void)
 
 #undef BUG_ON
 #define BUG_ON(cond) \
-    if (unlikely(cond)) \
-{ printf("ERROR in %s:%d\n", __FUNCTION__, __LINE__); hlt(); }
+    if (unlikely(cond)) { \
+        printf("ERROR in SeaBIOS-hppa v%d: %s:%d\n", SEABIOS_HPPA_VERSION, \
+        __FUNCTION__, __LINE__); hlt(); \
+    }
 
 void flush_data_cache(char *start, size_t length)
 {
@@ -1621,7 +1623,7 @@ static int pdc_pci_index(unsigned int *arg)
     switch (option) {
         case PDC_PCI_INTERFACE_INFO:
             memset(result, 0, 32 * sizeof(unsigned long));
-            BUG_ON(1);
+            // BUG_ON(1);
             result[0] = 2;  /* XXX physical hardware returns those ?!? */
             return PDC_OK;
         case PDC_PCI_GET_INT_TBL_SIZE:
@@ -1637,11 +1639,12 @@ static int pdc_pci_index(unsigned int *arg)
             memcpy((void *)ARG4, irt_table, irt_table_entries * 16);
             return PDC_OK;
         case PDC_PCI_PCI_PATH_TO_PCI_HPA:
-            BUG_ON(1);
+            // BUG_ON(1);
             result[0] = has_astro ? 0xfed00000 : PCI_HPA;
             return has_astro ? PDC_OK : PDC_BAD_OPTION;
         case PDC_PCI_PCI_HPA_TO_PCI_PATH:
-            BUG_ON(1);
+            // BUG_ON(1);
+            break;
     }
     return PDC_BAD_OPTION;
 }
@@ -1654,8 +1657,7 @@ static int pdc_initiator(unsigned int *arg)
     switch (option) {
         case PDC_GET_INITIATOR:
             /* SCSI controller is on normal PCI bus on machines with Astro */
-            if (has_astro)
-                return PDC_BAD_OPTION;
+            if (has_astro) return PDC_BAD_OPTION;
             // ARG3 points to the hwpath of device for which initiator is asked for.
             result[0] = 7;  // initiator_id/host_id: 7 to 15.
             result[1] = 10; // scsi_rate: 1, 2, 5 or 10 for 5, 10, 20 or 40 MT/s
