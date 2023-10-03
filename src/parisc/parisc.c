@@ -363,19 +363,84 @@ static const char *hpa_name(unsigned long hpa)
     return "UNKNOWN HPA";
 }
 
+int HPA_is_astro_ioport(unsigned long hpa)
+{
+    if (!has_astro)
+        return 0;
+    return ((hpa - IOS_DIST_BASE_ADDR) < IOS_DIST_BASE_SIZE);
+}
+
+int HPA_is_astro_mmio(unsigned long hpa)
+{
+    if (!has_astro)
+        return 0;
+    return ((hpa - LMMIO_DIST_BASE_ADDR) < LMMIO_DIST_BASE_SIZE);
+}
+
+struct pci_device *find_pci_from_HPA(unsigned long hpa)
+{
+    struct pci_device *pci = NULL;
+    int ioport;
+
+    if (HPA_is_astro_ioport(hpa)) {
+        ioport = 1;
+        hpa -= IOS_DIST_BASE_ADDR;
+    } else if (HPA_is_astro_mmio(hpa))
+        ioport = 0;
+    else
+        return NULL;
+
+    foreachpci(pci) {
+        int i;
+        for (i = 0; i < 6; i++) {
+            unsigned long addr = PCI_BASE_ADDRESS_0 + 4*i;
+            unsigned long mem;
+            mem = pci_config_readl(pci->bdf, addr);
+            if ((mem & PCI_BASE_ADDRESS_SPACE_IO) &&
+                ((mem & PCI_BASE_ADDRESS_IO_MASK) == hpa) &&
+                (ioport == 1))
+                    return pci;     /* found ioport */
+            if (((mem & PCI_BASE_ADDRESS_SPACE_IO) == 0) &&
+                ((mem & PCI_BASE_ADDRESS_MEM_MASK) == hpa) &&
+                (ioport == 0))
+                    return pci;     /* found memaddr */
+        }
+    }
+    dprintf(1, "No PCI device found for HPA %lx\n", hpa);
+    return NULL;
+}
+
 int HPA_is_serial_device(unsigned long hpa)
 {
-    return (hpa == DINO_UART_HPA) || (hpa == LASI_UART_HPA);
+    struct pci_device *pci;
+    if (!has_astro && ((hpa == DINO_UART_HPA) || (hpa == LASI_UART_HPA)))
+        return 1;
+    pci = find_pci_from_HPA(hpa);
+    dprintf(1, "PCI: is_serial %pP \n", pci);
+    return pci && pci->class == PCI_CLASS_COMMUNICATION_SERIAL;
 }
 
 int HPA_is_storage_device(unsigned long hpa)
 {
-    return (hpa == DINO_SCSI_HPA) || (hpa == IDE_HPA) || (hpa == LASI_SCSI_HPA);
+    struct pci_device *pci;
+    if (!has_astro && ((hpa == DINO_SCSI_HPA) || (hpa == IDE_HPA) || (hpa == LASI_SCSI_HPA)))
+        return 1;
+    pci = find_pci_from_HPA(hpa);
+    dprintf(1, "PCI: is_storage %pP hpa %lx\n", pci, hpa);
+    return pci && pci->class == PCI_CLASS_STORAGE_SCSI;
 }
 
 int HPA_is_keyboard_device(unsigned long hpa)
 {
-    return (hpa == LASI_PS2KBD_HPA);
+    struct pci_device *pci;
+    if (!has_astro && (hpa == LASI_PS2KBD_HPA))
+        return 1;
+    pci = find_pci_from_HPA(hpa);
+    dprintf(1, "PCI: is_keyboard %pP \n", pci);
+    if (!pci)
+        return 0;
+    return  pci->class == PCI_CLASS_COMMUNICATION_SERIAL ||
+            pci->class == PCI_CLASS_INPUT_KEYBOARD;
 }
 
 #define GFX_NUM_PAGES 0x2000
@@ -391,6 +456,20 @@ static const char *hpa_device_name(unsigned long hpa, int output)
             HPA_is_keyboard_device(hpa) ? "PS2" :
             ((hpa + 0x800) == PORT_SERIAL1) ?
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
+}
+
+#if 0
+static struct pdc_module_path mod_path_hpa_fed3c000 = {
+        .path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x6  },
+        .layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
+#endif
+void make_module_path_from_pcidev(struct pci_device *pci,
+            struct pdc_module_path *p)
+{
+    memset(p, 0, sizeof(*p));
+    p->path.bc[4] = has_astro ? 0x0a : 0x08; /* astro or dino */
+    p->path.bc[5] = pci->bdf >> 8; /* bus_id */
+    p->path.mod = pci->bdf & 0xff; /* slot */
 }
 
 static unsigned long keep_list[20] = { PARISC_KEEP_LIST };
@@ -464,7 +543,7 @@ static void remove_parisc_devices(unsigned int num_cpus)
 
     /* check if qemu emulates LASI chip (LASI_IAR exists) */
     if (*(unsigned long *)(LASI_HPA+16) == 0) {
-        /* remove_from_keep_list(LASI_UART_HPA); keep for HP-UX at bootup */
+        remove_from_keep_list(LASI_UART_HPA);
         remove_from_keep_list(LASI_LAN_HPA);
         remove_from_keep_list(LASI_LPT_HPA);
     } else {
@@ -574,9 +653,12 @@ static hppa_device_t *find_hppa_device_by_path(struct pdc_module_path *search,
 #define SERIAL_TIMEOUT 20
 static unsigned long parisc_serial_in(char *c, unsigned long maxchars)
 {
-    portaddr_t addr = PAGE0->mem_kbd.hpa + 0x800; /* PARISC_SERIAL_CONSOLE */
+    portaddr_t addr = PAGE0->mem_kbd.hpa; /* PARISC_SERIAL_CONSOLE */
     unsigned long end = timer_calc(SERIAL_TIMEOUT);
     unsigned long count = 0;
+
+    if (!has_astro)
+        addr += 0x800;
     while (count < maxchars) {
         u8 lsr = inb(addr+SEROFF_LSR);
         if (lsr & 0x01) {
@@ -595,9 +677,12 @@ static void parisc_serial_out(char c)
     portaddr_t addr = PAGE0->mem_cons.hpa;
 
     /* might not be initialized if problems happen during early bootup */
-    if (!addr)
-        addr = PARISC_SERIAL_CONSOLE;
-    else
+    if (!addr) {
+        /* use debugoutput instead */
+        dprintf(0, "%c", c);
+        return;
+    }
+    if (!has_astro)
         addr += 0x800;
 
     if (c == '\n')
@@ -2198,6 +2283,35 @@ static void find_pci_slot_for_dev(unsigned int pciid, char *pci_slot)
         }
 }
 
+/* find serial PCI card (to be used as console) */
+static void find_serial_pci_card(void)
+{
+    struct pci_device *pci;
+    u32 pmem;
+
+    if (!has_astro)
+        return;
+    pci = pci_find_class(PCI_CLASS_COMMUNICATION_SERIAL);
+    if (!pci)
+        return;
+
+    dprintf(1, "PCI: Enabling %pP for primary SERIAL PORT\n", pci);
+    pci_config_maskw(pci->bdf, PCI_COMMAND, 0,
+                     PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
+    pmem = pci_enable_iobar(pci, PCI_BASE_ADDRESS_0);
+    pmem += IOS_DIST_BASE_ADDR;
+    dprintf(1, "PCI: Enabling %pP for primary SERIAL PORT mem %x\n", pci, pmem);
+
+    pci = find_pci_from_HPA(pmem);
+    dprintf(1, "PCI: found PCI serial %pP \n", pci);
+
+    /* set serial port */
+    mem_cons_boot.hpa = pmem;
+    mem_kbd_boot.hpa = pmem;
+    PAGE0->mem_kbd.hpa = pmem;
+}
+
+
 /* Prepare boot paths in PAGE0 and stable memory */
 static void prepare_boot_path(volatile struct pz_device *dest,
         const struct pz_device *source,
@@ -2206,6 +2320,7 @@ static void prepare_boot_path(volatile struct pz_device *dest,
     int hpa_index;
     unsigned long hpa;
     struct pdc_module_path *mod_path;
+    struct pdc_module_path temp_mod_path;
 
     hpa = source->hpa;
     hpa_index = find_hpa_index(hpa);
@@ -2216,9 +2331,14 @@ static void prepare_boot_path(volatile struct pz_device *dest,
         mod_path = &mod_path_hpa_ffd05000;
     else if (hpa == DINO_UART_HPA) // HPA_is_serial_device(hpa))
         mod_path = &mod_path_hpa_fff83000;
-    else {
-        BUG_ON(hpa_index < 0);
+    else if (hpa_index >= 0)
         mod_path = parisc_devices[hpa_index].mod_path;
+    else {
+        struct pci_device *pci;
+        pci = find_pci_from_HPA(hpa);
+        BUG_ON(!pci);
+        make_module_path_from_pcidev(pci, &temp_mod_path);
+        mod_path = &temp_mod_path;
     }
 
     /* copy device path to entry in PAGE0 */
@@ -2282,8 +2402,6 @@ void __VISIBLE start_parisc_firmware(void)
     /* Initialize malloc stack */
     malloc_preinit();
 
-    // set Qemu serial debug port
-    DebugOutputPort = PARISC_SERIAL_CONSOLE;
     // PlatformRunningOn = PF_QEMU;  // emulate runningOnQEMU()
 
     /* Initialize qemu fw_cfg interface */
@@ -2293,20 +2411,13 @@ void __VISIBLE start_parisc_firmware(void)
     /* Initialize boot structures. Needs working fw_cfg for bootprio option. */
     boot_init();
 
+    DebugOutputPort = romfile_loadint("/etc/hppa/DebugOutputPort", CPU_HPA + 24);
+
     i = romfile_loadint("/etc/firmware-min-version", 0);
     if (i && i > SEABIOS_HPPA_VERSION) {
         printf("\nSeaBIOS firmware is version %d, but version %d is required. "
             "Please update.\n", (int)SEABIOS_HPPA_VERSION, i);
         hlt();
-    }
-    /* Qemu versions which request a SEABIOS_HPPA_VERSION < 6 have the bug that
-     * they use the DINO UART instead of the LASI UART as serial port #0.
-     * Fix it up here and switch the serial console code to use PORT_SERIAL2
-     * for such Qemu versions, so that we can still use this higher SeaBIOS
-     * version with older Qemus. */
-    if (i < 6) {
-        mem_cons_boot.hpa = PORT_SERIAL2 - 0x800;
-        mem_kbd_boot.hpa = PORT_SERIAL2 - 0x800;
     }
 
     /* which machine shall we emulate? */
@@ -2318,6 +2429,9 @@ void __VISIBLE start_parisc_firmware(void)
         has_astro = 1;
         hppa_port_pci_cmd  = 0xfed30000 + 0x040;
         hppa_port_pci_data = 0xfed30000 + 0x048;
+        /* no serial port for now, will find later */
+        mem_cons_boot.hpa = 0;
+        mem_kbd_boot.hpa = 0;
     }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
@@ -2400,21 +2514,6 @@ void __VISIBLE start_parisc_firmware(void)
         remove_from_keep_list(LASI_PS2MOU_HPA);
     }
 
-    // Initialize boot paths (graphics & keyboard)
-    if (pdc_console == CONSOLE_DEFAULT) {
-	if (artist_present())
-            pdc_console = CONSOLE_GRAPHICS;
-	else
-            pdc_console = CONSOLE_SERIAL;
-    }
-    if (pdc_console == CONSOLE_GRAPHICS) {
-        prepare_boot_path(&(PAGE0->mem_cons), &mem_cons_sti_boot, 0x60);
-        prepare_boot_path(&(PAGE0->mem_kbd),  &mem_kbd_sti_boot, 0xa0);
-    } else {
-        prepare_boot_path(&(PAGE0->mem_cons), &mem_cons_boot, 0x60);
-        prepare_boot_path(&(PAGE0->mem_kbd),  &mem_kbd_boot, 0xa0);
-    }
-
     /* Initialize device list */
     keep_add_generic_devices();
     remove_parisc_devices(smp_cpus);
@@ -2453,8 +2552,26 @@ void __VISIBLE start_parisc_firmware(void)
     if (has_astro)
         iosapic_table_setup();
 
+    /* find serial PCI card when running on Astro */
+    find_serial_pci_card();
+
     serial_setup();
     block_setup();
+
+    // Initialize boot paths (graphics & keyboard)
+    if (pdc_console == CONSOLE_DEFAULT) {
+	if (artist_present())
+            pdc_console = CONSOLE_GRAPHICS;
+	else
+            pdc_console = CONSOLE_SERIAL;
+    }
+    if (pdc_console == CONSOLE_GRAPHICS) {
+        prepare_boot_path(&(PAGE0->mem_cons), &mem_cons_sti_boot, 0x60);
+        prepare_boot_path(&(PAGE0->mem_kbd),  &mem_kbd_sti_boot, 0xa0);
+    } else {
+        prepare_boot_path(&(PAGE0->mem_cons), &mem_cons_boot, 0x60);
+        prepare_boot_path(&(PAGE0->mem_kbd),  &mem_kbd_boot, 0xa0);
+    }
 
     PAGE0->vec_rendz = 0; /* No rendezvous yet. Add MEM_RENDEZ_HI later */
 
