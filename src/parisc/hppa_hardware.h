@@ -29,7 +29,6 @@
 #define MEMORY_HPA      0xfffff000
 
 #define PCI_HPA         DINO_HPA        /* PCI bus */
-#define IDE_HPA         0xf9000000      /* Boot disc controller */
 
 /* offsets to DINO HPA: */
 #define DINO_PCI_ADDR           0x064

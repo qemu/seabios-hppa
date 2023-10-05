@@ -326,7 +326,6 @@ static const char *hpa_name(unsigned long hpa)
     DO(DINO_SCSI_HPA)
     DO(CPU_HPA)
     DO(MEMORY_HPA)
-    DO(IDE_HPA)
     DO(LASI_HPA)
     DO(LASI_UART_HPA)
     DO(LASI_SCSI_HPA)
@@ -416,14 +415,14 @@ int HPA_is_serial_device(unsigned long hpa)
     if (!has_astro && ((hpa == DINO_UART_HPA) || (hpa == LASI_UART_HPA)))
         return 1;
     pci = find_pci_from_HPA(hpa);
-    dprintf(1, "PCI: is_serial %pP \n", pci);
+    // dprintf(1, "PCI: is_serial %pP \n", pci);
     return pci && pci->class == PCI_CLASS_COMMUNICATION_SERIAL;
 }
 
 int HPA_is_storage_device(unsigned long hpa)
 {
     struct pci_device *pci;
-    if (!has_astro && ((hpa == DINO_SCSI_HPA) || (hpa == IDE_HPA) || (hpa == LASI_SCSI_HPA)))
+    if (!has_astro && ((hpa == DINO_SCSI_HPA) || (hpa == LASI_SCSI_HPA)))
         return 1;
     pci = find_pci_from_HPA(hpa);
     dprintf(1, "PCI: is_storage %pP hpa %lx\n", pci, hpa);
@@ -468,7 +467,7 @@ void make_module_path_from_pcidev(struct pci_device *pci,
 {
     memset(p, 0, sizeof(*p));
     p->path.bc[4] = has_astro ? 0x0a : 0x08; /* astro or dino */
-    p->path.bc[5] = pci->bdf >> 8; /* bus_id */
+    p->path.bc[5] = 0; // or elroy ?pci->bdf >> 8; /* bus_id */
     p->path.mod = pci->bdf & 0xff; /* slot */
 }
 
@@ -682,8 +681,11 @@ static void parisc_serial_out(char c)
         dprintf(0, "%c", c);
         return;
     }
-    if (!has_astro)
+    if (has_astro)
+        addr -= IOS_DIST_BASE_ADDR;
+    else
         addr += 0x800;
+//  dprintf(1,"parisc_serial_out  addr %x\n", addr);
 
     if (c == '\n')
         parisc_serial_out('\r');
@@ -839,12 +841,10 @@ int __VISIBLE parisc_iodc_ENTRY_INIT(unsigned int *arg FUNC_MANY_ARGS)
     unsigned long hpa = ARG0;
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG4;
-    int hpa_index;
 
     iodc_log_call(arg, __FUNCTION__);
 
-    hpa_index = find_hpa_index(hpa);
-    if (hpa_index < 0 && hpa != IDE_HPA)
+    if (!HPA_is_storage_device(hpa) && !HPA_is_serial_device(hpa))
         return PDC_INVALID_ARG;
 
     switch (option) {
@@ -889,12 +889,10 @@ int __VISIBLE parisc_iodc_ENTRY_TEST(unsigned int *arg FUNC_MANY_ARGS)
     unsigned long hpa = ARG0;
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG4;
-    int hpa_index;
 
     iodc_log_call(arg, __FUNCTION__);
 
-    hpa_index = find_hpa_index(hpa);
-    if (hpa_index < 0 && hpa != IDE_HPA)
+    if (!(HPA_is_storage_device(hpa) || HPA_is_serial_device(hpa)))
         return PDC_INVALID_ARG;
 
     /* The options ARG1=0 and ARG1=1 are required. Others are optional. */
@@ -1248,18 +1246,14 @@ static int pdc_iodc(unsigned int *arg)
     int hpa_index;
     unsigned char *c;
 
-    // dprintf(0, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%x ARG4=%x ARG5=%x ARG6=%x\n", option, ARG3, ARG4, ARG5, ARG6);
+    dprintf(0, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%x ARG4=%x ARG5=%x ARG6=%x\n", option, ARG3, ARG4, ARG5, ARG6);
     switch (option) {
         case PDC_IODC_READ:
             hpa = ARG3;
-            if (hpa == IDE_HPA) { // do NOT check for DINO_SCSI_HPA, breaks Linux which scans IO areas for unlisted io modules
-                iodc_p = &iodc_data_hpa_fff8c000; // workaround for PCI ATA
-            } else {
-                hpa_index = find_hpa_index(hpa);
-                if (hpa_index < 0)
-                    return -4; // not found
-                iodc_p = parisc_devices[hpa_index].iodc;
-            }
+            hpa_index = find_hpa_index(hpa);
+            if (hpa_index < 0)
+                return -4; // not found
+            iodc_p = parisc_devices[hpa_index].iodc;
 
             if (ARG4 == PDC_IODC_INDEX_DATA) {
                 // if (hpa == MEMORY_HPA)
@@ -2265,9 +2259,9 @@ static struct pz_device mem_kbd_boot = {
     .cl_class = CL_KEYBD,
 };
 
-static const struct pz_device mem_boot_boot = {
+static struct pz_device mem_boot_boot = {
     .dp.flags = PF_AUTOBOOT,
-    .hpa = IDE_HPA, // DINO_SCSI_HPA,  // IDE_HPA
+    .hpa = DINO_SCSI_HPA,  // will be overwritten
     .iodc_io = (unsigned long) &iodc_entry,
     .cl_class = CL_RANDOM,
 };
@@ -2305,10 +2299,30 @@ static void find_serial_pci_card(void)
     pci = find_pci_from_HPA(pmem);
     dprintf(1, "PCI: found PCI serial %pP \n", pci);
 
-    /* set serial port */
+    /* set serial port for console output and keyboard input */
     mem_cons_boot.hpa = pmem;
     mem_kbd_boot.hpa = pmem;
-    PAGE0->mem_kbd.hpa = pmem;
+}
+
+/* find SCSI PCI card (to be used as boot device) */
+static void find_scsi_pci_card(void)
+{
+    struct pci_device *pci;
+    u32 pmem;
+
+    if (!has_astro)
+        return;
+    pci = pci_find_class(PCI_CLASS_STORAGE_SCSI);
+    if (!pci)
+        return;
+    dprintf(1, "PCI: Enabling %pP for primary SCSI PORT\n", pci);
+    pmem = pci_enable_iobar(pci, PCI_BASE_ADDRESS_0);
+    pmem += IOS_DIST_BASE_ADDR;
+    dprintf(1, "PCI: Enabling %pP for primary SCSI PORT mem %x\n", pci, pmem);
+
+    /* set SCSI HPA */
+//HELGE
+    mem_boot_boot.hpa = pmem;
 }
 
 
@@ -2558,6 +2572,9 @@ void __VISIBLE start_parisc_firmware(void)
     serial_setup();
     block_setup();
 
+    /* find SCSI PCI card when running on Astro or Dino */
+    find_scsi_pci_card();
+
     // Initialize boot paths (graphics & keyboard)
     if (pdc_console == CONSOLE_DEFAULT) {
 	if (artist_present())
@@ -2614,8 +2631,7 @@ void __VISIBLE start_parisc_firmware(void)
         boot_drive = parisc_boot_cdrom;
 
     // Find PCI bus id of LSI SCSI card
-    find_pci_slot_for_dev(PCI_VENDOR_ID_LSI_LOGIC,
-            &mod_path_emulated_drives.path.bc[5]);
+    // find_pci_slot_for_dev(PCI_VENDOR_ID_LSI_LOGIC, &mod_path_emulated_drives.path.bc[5]);
 
     // Store initial emulated drives path master data
     if (parisc_boot_harddisc) {

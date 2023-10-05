@@ -163,7 +163,7 @@ endmenu
 
 menu "Hardware support"
     config ATA
-        depends on DRIVES
+        depends on DRIVES && !PARISC
         bool "ATA controllers"
         default y
         help
