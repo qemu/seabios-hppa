@@ -493,6 +493,7 @@ void make_module_path_from_pcidev(struct pci_device *pci,
     case PCI_CLASS_NETWORK_ETHERNET:
     case PCI_CLASS_STORAGE_SCSI:
     case PCI_CLASS_SERIAL_USB:
+    default:
 #if 0
 static struct pdc_module_path mod_path_hpa_fed3c000 = { // SCSI
         .path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x6  },
@@ -503,8 +504,6 @@ static struct pdc_module_path mod_path_hpa_fed3c000 = { // SCSI
         p->path.bc[5] = pci->bdf >> 3;  /* slot */
         p->path.mod = pci->bdf & 0x07; /* function */
         break;
-    default:
-        BUG_ON(1);
     }
 }
 
@@ -527,11 +526,9 @@ void make_iodc_from_pcidev(struct pci_device *pci,
     case PCI_CLASS_COMMUNICATION_SERIAL:
     case PCI_CLASS_NETWORK_ETHERNET:
     case PCI_CLASS_SERIAL_USB:
+    default:
         p->type = 0x008a;
         break;
-    default:
-        BUG_ON(1);
-        return;
     }
 };
 
