@@ -30,7 +30,7 @@ static struct pdc_system_map_mod_info mod_info_hpa_fed00000 = {
 	.add_addrs = 0x0,
 };
 static struct pdc_module_path mod_path_hpa_fed00000 = {
-	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, .mod = 0xa  },
+	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, .mod = ASTRO_BUS_MODULE  },
 	.layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
 };
 static struct pdc_iodc iodc_data_hpa_fed00000 = {
@@ -59,7 +59,7 @@ static struct pdc_system_map_mod_info mod_info_hpa_fed30000 = {
 	.add_addrs = 0x0,
 };
 static struct pdc_module_path mod_path_hpa_fed30000 = {
-	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x0  },
+	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, ASTRO_BUS_MODULE }, .mod = 0x0  },
 	.layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
 };
 static struct pdc_iodc iodc_data_hpa_fed30000 = {
@@ -88,7 +88,7 @@ static struct pdc_system_map_mod_info mod_info_hpa_fed32000 = {
 	.add_addrs = 0x0,
 };
 static struct pdc_module_path mod_path_hpa_fed32000 = {
-	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x1  },
+	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, ASTRO_BUS_MODULE }, .mod = 0x1  },
 	.layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
 };
 static struct pdc_iodc iodc_data_hpa_fed32000 = {
@@ -117,7 +117,7 @@ static struct pdc_system_map_mod_info mod_info_hpa_fed38000 = {
 	.add_addrs = 0x0,
 };
 static struct pdc_module_path mod_path_hpa_fed38000 = {
-	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x4  },
+	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, ASTRO_BUS_MODULE }, .mod = 0x4  },
 	.layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
 };
 static struct pdc_iodc iodc_data_hpa_fed38000 = {
@@ -146,7 +146,7 @@ static struct pdc_system_map_mod_info mod_info_hpa_fed3c000 = {
 	.add_addrs = 0x0,
 };
 static struct pdc_module_path mod_path_hpa_fed3c000 = {
-	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x6  },
+	.path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, ASTRO_BUS_MODULE }, .mod = 0x6  },
 	.layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
 };
 static struct pdc_iodc iodc_data_hpa_fed3c000 = {
@@ -179,6 +179,7 @@ static struct pdc_module_path mod_path_hpa_fffa0000 = {
 	.layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
 };
 static struct pdc_iodc iodc_data_hpa_fffa0000 = {
+#if 0 // original C3700:
 	.hversion_model = 0x005d,
 	.hversion = 0x00c0,
 	.spa = 0x0000,
@@ -186,6 +187,16 @@ static struct pdc_iodc iodc_data_hpa_fffa0000 = {
 	.sversion_rev = 0x0000,
 	.sversion_model = 0x0002,
 	.sversion_opt = 0x0040,
+#else
+        /* this is from B160L */
+        .hversion_model = 0x0050,
+        .hversion = 0x0020,
+        .spa = 0x0000,
+        .type = 0x0040,
+        .sversion_rev = 0x0000,
+        .sversion_model = 0x0002,
+        .sversion_opt = 0x0040,
+#endif
 	.rev = 0x0000,
 	.dep = 0x0000,
 	.features = 0x0000,
@@ -270,6 +281,9 @@ static struct pdc_iodc iodc_data_hpa_fed10200 = {
 		.mod_path = &mod_path_hpa_fed10200,\
 		.num_addr = HPA_fed10200_num_addr,\
 		.add_addr = { HPA_fed10200_add_addr } },\
+	{ 0, }
+
+#if 0
 /* hacked in from here */   \
 	{	.hpa = 0xffd05000,\
 		.iodc = &iodc_data_hpa_ffd05000,\
@@ -277,4 +291,5 @@ static struct pdc_iodc iodc_data_hpa_fed10200 = {
 		.mod_path = &mod_path_hpa_ffd05000,\
 		.num_addr = HPA_ffd05000_num_addr,\
 		.add_addr = { HPA_ffd05000_add_addr } },\
-	{ 0, }
+
+#endif

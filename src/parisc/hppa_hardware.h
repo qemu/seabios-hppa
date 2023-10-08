@@ -50,6 +50,8 @@
 #define PIM_STORAGE_SIZE 600	/* storage size of pdc_pim_toc_struct (64bit) */
 
 
+#define ASTRO_BUS_MODULE        0x0a            /* original: 0x0a, use 0 ? */
+
 /* ASTRO Memory and I/O regions */
 #define LMMIO_DIST_BASE_ADDR      0xf4000000UL
 #define LMMIO_DIST_BASE_SIZE       0x4000000UL

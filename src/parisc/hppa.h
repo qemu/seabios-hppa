@@ -406,5 +406,9 @@ static inline void wrmsr(u32 index, u64 val)
 // x86.c
 void cpuid(u32 index, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx);
 
+// pci.c
+unsigned long elroy_offset(u16 bdf);
+void *elroy_port(unsigned long port, unsigned long offs);
+
 #endif // !__ASSEMBLY__
 #endif

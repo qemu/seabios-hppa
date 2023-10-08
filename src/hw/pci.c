@@ -42,7 +42,7 @@ static u32 ioconfig_cmd(u16 bdf, u32 addr)
 
 /* each elroy has 0x2000 offset */
 #define ELROY_MAX_BUSSES        4
-static unsigned long elroy_offset(u16 bdf)
+unsigned long elroy_offset(u16 bdf)
 {
     static const int elroy_hpa_offsets[ELROY_MAX_BUSSES] = { 0x30000, 0x32000, 0x38000, 0x3c000 };
     int bus = pci_bdf_to_bus(bdf);
@@ -51,7 +51,7 @@ static unsigned long elroy_offset(u16 bdf)
     return elroy_hpa_offsets[bus] - elroy_hpa_offsets[0];
 }
 
-static void *elroy_port(unsigned long port, unsigned long offs)
+void *elroy_port(unsigned long port, unsigned long offs)
 {
     return (void *)(port + offs);
 }

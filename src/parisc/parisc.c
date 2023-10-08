@@ -219,7 +219,7 @@ void __VISIBLE __noreturn reset(void)
 #undef BUG_ON
 #define BUG_ON(cond) \
     if (unlikely(cond)) { \
-        printf("ERROR in SeaBIOS-hppa v%d: %s:%d\n", SEABIOS_HPPA_VERSION, \
+        printf("*ERROR* in SeaBIOS-hppa-v%d:\n%s:%d\n", SEABIOS_HPPA_VERSION, \
         __FUNCTION__, __LINE__); hlt(); \
     }
 
@@ -274,7 +274,11 @@ typedef struct {
     struct pdc_module_path *mod_path;
     int num_addr;
     int add_addr[5];
+    struct pci_device *pci;
+    unsigned long pci_addr;
 } hppa_device_t;
+
+static hppa_device_t *find_hpa_device(unsigned long hpa);
 
 #define CONCAT2(a, b) a ## b
 #define CONCAT(a, b) CONCAT2(a, b)
@@ -289,6 +293,7 @@ struct machine_info {
         unsigned long		pdc_cache_info[30];
         hppa_device_t		device_list[MAX_DEVICES];
 };
+
 
 /* create machine definitions */
 #define MACHINE	B160L
@@ -409,37 +414,54 @@ struct pci_device *find_pci_from_HPA(unsigned long hpa)
     return NULL;
 }
 
-int HPA_is_serial_device(unsigned long hpa)
+int DEV_is_storage_device(hppa_device_t *dev)
 {
-    struct pci_device *pci;
-    if (!has_astro && ((hpa == DINO_UART_HPA) || (hpa == LASI_UART_HPA)))
-        return 1;
-    pci = find_pci_from_HPA(hpa);
-    // dprintf(1, "PCI: is_serial %pP \n", pci);
-    return pci && pci->class == PCI_CLASS_COMMUNICATION_SERIAL;
+    BUG_ON(!dev);
+    if (dev->pci)
+        return (dev->pci->class == PCI_CLASS_STORAGE_SCSI);
+    return ((dev->iodc->type & 0xf) == 0x04); /* HPHW_A_DMA */
 }
 
-int HPA_is_storage_device(unsigned long hpa)
+int DEV_is_serial_device(hppa_device_t *dev)
 {
-    struct pci_device *pci;
-    if (!has_astro && ((hpa == DINO_SCSI_HPA) || (hpa == LASI_SCSI_HPA)))
-        return 1;
-    pci = find_pci_from_HPA(hpa);
-    dprintf(1, "PCI: is_storage %pP hpa %lx\n", pci, hpa);
-    return pci && pci->class == PCI_CLASS_STORAGE_SCSI;
+    BUG_ON(!dev);
+    if (dev->pci)
+        return (dev->pci->class == PCI_CLASS_COMMUNICATION_SERIAL);
+    return ((dev->iodc->type & 0xf) == 0x0a); /* HPHW_FIO */
 }
+
+int HPA_is_serial_device(unsigned long hpa)
+{
+    hppa_device_t *dev;
+
+    dev = find_hpa_device(hpa);
+    if (!dev)
+        return 0;
+    return DEV_is_serial_device(dev);
+}
+
+int DEV_is_network_device(hppa_device_t *dev)
+{
+    BUG_ON(!dev);
+    if (dev->pci)
+        return (dev->pci->class == PCI_CLASS_NETWORK_ETHERNET);
+    return ((dev->iodc->type & 0xf) == 0x0a); /* HPHW_FIO */
+}
+
 
 int HPA_is_keyboard_device(unsigned long hpa)
 {
     struct pci_device *pci;
+    int ret;
     if (!has_astro && (hpa == LASI_PS2KBD_HPA))
         return 1;
     pci = find_pci_from_HPA(hpa);
-    dprintf(1, "PCI: is_keyboard %pP \n", pci);
     if (!pci)
         return 0;
-    return  pci->class == PCI_CLASS_COMMUNICATION_SERIAL ||
+    ret = pci->class == PCI_CLASS_COMMUNICATION_SERIAL ||
             pci->class == PCI_CLASS_INPUT_KEYBOARD;
+    dprintf(1, "PCI: is_keyboard? %pP -> %s\n", pci, ret?"Yes":"no");
+    return ret;
 }
 
 #define GFX_NUM_PAGES 0x2000
@@ -457,18 +479,138 @@ static const char *hpa_device_name(unsigned long hpa, int output)
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
 }
 
-#if 0
-static struct pdc_module_path mod_path_hpa_fed3c000 = {
-        .path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x6  },
-        .layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
-#endif
 void make_module_path_from_pcidev(struct pci_device *pci,
             struct pdc_module_path *p)
 {
     memset(p, 0, sizeof(*p));
-    p->path.bc[4] = has_astro ? 0x0a : 0x08; /* astro or dino */
-    p->path.bc[5] = 0; // or elroy ?pci->bdf >> 8; /* bus_id */
-    p->path.mod = pci->bdf & 0xff; /* slot */
+    memset(&p->path.bc, 0xff, sizeof(p->path.bc));
+
+    switch (pci->class) {
+    case PCI_CLASS_STORAGE_SCSI:
+    case PCI_CLASS_COMMUNICATION_SERIAL:
+    case PCI_CLASS_NETWORK_ETHERNET:
+#if 0
+static struct pdc_module_path mod_path_hpa_fed3c000 = { // SCSI
+        .path = { .flags = 0x0, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xa }, .mod = 0x6  },
+        .layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
+#endif
+        p->path.bc[3] = has_astro ? ASTRO_BUS_MODULE : 0x08; /* astro or dino */
+        p->path.bc[4] = 0; // elroy index (0,1,4,6) == PCI Bus number (0,1,2,3)
+        p->path.bc[5] = pci->bdf >> 3;  /* slot */
+        p->path.mod = pci->bdf & 0x07; /* function */
+        break;
+    default:
+        BUG_ON(1);
+    }
+}
+
+void make_iodc_from_pcidev(struct pci_device *pci,
+            struct pdc_iodc *p)
+{
+    memset(p, 0, sizeof(*p));
+    p->hversion_model = 0x0058;
+    p->hversion = 0x0020;
+    p->sversion_model = 0;
+    p->sversion_opt = 0;
+    p->rev = 0x0099;
+    p->features = 0x0001;
+    p->length = 1;
+
+    switch (pci->class) {
+    case PCI_CLASS_STORAGE_SCSI:
+        p->type = 0x0084;
+        break;
+    case PCI_CLASS_COMMUNICATION_SERIAL:
+        p->type = 0x008a;
+        break;
+    case PCI_CLASS_NETWORK_ETHERNET:
+        p->type = 0x008a;
+        break;
+    default:
+        BUG_ON(1);
+        return;
+    }
+};
+
+void make_modinfo_from_pcidev(struct pci_device *pci,
+            struct pdc_system_map_mod_info *p, unsigned long pfa)
+{
+    memset(p, 0, sizeof(*p));
+    p->mod_addr = pfa;
+    p->mod_pgs = 0;
+    p->add_addrs = 0; //  HPA_is_graphics_device(pfa) ? GFX_NUM_PAGES : 0;
+};
+
+#define MAX_PCI_DEVICES         10
+static int curr_pci_devices;    /* current number of PCI devices in list */
+static hppa_device_t                    hppa_pci_devices[MAX_PCI_DEVICES];
+static struct pdc_iodc                  hppa_pci_iodc[MAX_PCI_DEVICES];
+static struct pdc_system_map_mod_info   hppa_pci_mod_info[MAX_PCI_DEVICES];
+static struct pdc_module_path           hppa_pci_mod_path[MAX_PCI_DEVICES];
+
+
+/* create table of PFA (PCI Function address), similiar to HPA */
+static void hppa_pci_build_devices_list(void)
+{
+    struct pci_device *pci;
+
+    memset(&hppa_pci_devices, 0, sizeof(hppa_pci_devices));
+
+    curr_pci_devices = 0;
+
+    dprintf(1, "\n PCI DEVICE LIST PFA TABLE\n");
+    foreachpci(pci) {
+        unsigned long pfa, offs;
+        hppa_device_t *pdev = &hppa_pci_devices[curr_pci_devices];
+
+        offs = elroy_offset(pci->bdf);
+        BUG_ON(offs == -1UL);
+        pfa = (unsigned long) elroy_port(0, offs);
+        pfa += pci->bdf << 8;
+        dprintf(1, "PCI device #%d %pP bdf 0x%x at pfa 0x%lx\n", curr_pci_devices, pci, pci->bdf, pfa);
+
+        pdev->hpa       = pfa;
+        pdev->iodc      = &hppa_pci_iodc[curr_pci_devices];
+        pdev->mod_info  = &hppa_pci_mod_info[curr_pci_devices];
+        pdev->mod_path  = &hppa_pci_mod_path[curr_pci_devices];
+        pdev->num_addr  = 0;
+        pdev->pci = pci;
+
+        make_iodc_from_pcidev(pci, pdev->iodc);
+        make_modinfo_from_pcidev(pci, pdev->mod_info, pfa);
+        make_module_path_from_pcidev(pci, pdev->mod_path);
+
+        curr_pci_devices++;
+        BUG_ON(curr_pci_devices >= MAX_PCI_DEVICES);
+    }
+}
+
+static hppa_device_t *find_hpa_device(unsigned long hpa)
+{
+    int i;
+
+    /* search classical HPPA devices */
+    if (hpa)
+      for (i = 0; i < (MAX_DEVICES-1); i++) {
+        if (hpa == parisc_devices[i].hpa)
+            return &parisc_devices[i];
+        if (!parisc_devices[i].hpa)
+            break;
+    }
+
+    /* search PCI devices */
+    for (i = 0; i < curr_pci_devices; i++) {
+        if (hpa == hppa_pci_devices[i].hpa)
+            return &hppa_pci_devices[i];
+    }
+    return NULL;
+}
+
+static void print_mod_path(struct pdc_module_path *p)
+{
+    dprintf(1, "PATH %d:%d:%d:%d:%d:%d.%d.%d ", p->path.bc[0], p->path.bc[1],
+            p->path.bc[2],p->path.bc[3],p->path.bc[4],p->path.bc[5],
+            p->path.mod, p->layers[0]);
 }
 
 static unsigned long keep_list[20] = { PARISC_KEEP_LIST };
@@ -593,20 +735,6 @@ static void remove_parisc_devices(unsigned int num_cpus)
     }
 }
 
-static int find_hpa_index(unsigned long hpa)
-{
-    int i;
-    if (!hpa)
-        return -1;
-    for (i = 0; i < (MAX_DEVICES-1); i++) {
-        if (hpa == parisc_devices[i].hpa)
-            return i;
-        if (!parisc_devices[i].hpa)
-            return -1;
-    }
-    return -1;
-}
-
 static int compare_module_path(struct pdc_module_path *path,
                                struct pdc_module_path *search,
                                int check_layers)
@@ -634,7 +762,7 @@ static hppa_device_t *find_hppa_device_by_path(struct pdc_module_path *search,
                                         unsigned long *index, int check_layers)
 {
     hppa_device_t *dev;
-    int i;
+    int i, nr = 0;
 
     for (i = 0; i < (MAX_DEVICES-1); i++) {
         dev = parisc_devices + i;
@@ -642,21 +770,62 @@ static hppa_device_t *find_hppa_device_by_path(struct pdc_module_path *search,
             continue;
 
         if (!compare_module_path(dev->mod_path, search, check_layers)) {
-            *index = i;
+            *index = nr;
             return dev;
         }
+        nr++;
     }
+
+    /* search PCI devices */
+    for (i = 0; i < curr_pci_devices; i++) {
+        dev = hppa_pci_devices + i;
+        if (!compare_module_path(dev->mod_path, search, check_layers)) {
+            *index = nr;
+            return dev;
+        }
+        nr++;
+    }
+
+    return NULL;
+}
+
+static hppa_device_t *find_hppa_device_by_index(unsigned int index, int search_pci)
+{
+    hppa_device_t *dev;
+    int i;
+
+    for (i = 0; i < (MAX_DEVICES-1); i++) {
+        dev = parisc_devices + i;
+        if (!dev->hpa)
+            continue;
+        if (index-- == 0)
+            return dev;
+    }
+
+    /* search PCI devices */
+    if (search_pci) {
+        for (i = 0; i < curr_pci_devices; i++) {
+            dev = hppa_pci_devices + i;
+            if (index-- == 0)
+                return dev;
+        }
+    }
+
     return NULL;
 }
 
 #define SERIAL_TIMEOUT 20
 static unsigned long parisc_serial_in(char *c, unsigned long maxchars)
 {
-    portaddr_t addr = PAGE0->mem_kbd.hpa; /* PARISC_SERIAL_CONSOLE */
+    portaddr_t addr = PAGE0->mem_kbd.hpa;
     unsigned long end = timer_calc(SERIAL_TIMEOUT);
     unsigned long count = 0;
 
-    if (!has_astro)
+    if (has_astro) {
+        hppa_device_t *dev = find_hpa_device(addr);
+        BUG_ON(!dev);
+        addr = dev->pci_addr;
+    } else
         addr += 0x800;
     while (count < maxchars) {
         u8 lsr = inb(addr+SEROFF_LSR);
@@ -681,9 +850,11 @@ static void parisc_serial_out(char c)
         dprintf(0, "%c", c);
         return;
     }
-    if (has_astro)
-        addr -= IOS_DIST_BASE_ADDR;
-    else
+    if (has_astro) {
+        hppa_device_t *dev = find_hpa_device(addr);
+        BUG_ON(!dev);
+        addr = dev->pci_addr;
+    } else
         addr += 0x800;
 //  dprintf(1,"parisc_serial_out  addr %x\n", addr);
 
@@ -749,14 +920,19 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
     unsigned long hpa = ARG0;
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG4;
+    hppa_device_t *dev;
     int ret, len;
     char *c;
     struct disk_op_s disk_op;
 
+    dev = find_hpa_device(hpa);
+    if (!dev)
+        return PDC_INVALID_ARG;
+
     if (1 &&
-            (((HPA_is_serial_device(hpa) || HPA_is_graphics_device(hpa)) && option == ENTRY_IO_COUT) ||
-             ((HPA_is_serial_device(hpa) || HPA_is_graphics_device(hpa)) && option == ENTRY_IO_CIN) ||
-             ((HPA_is_storage_device(hpa) && option == ENTRY_IO_BOOTIN && !(pdc_debug & DEBUG_BOOT_IO)))) ) {
+            (((DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa)) && option == ENTRY_IO_COUT) ||
+             ((DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa)) && option == ENTRY_IO_CIN) ||
+             ((DEV_is_storage_device(dev) && option == ENTRY_IO_BOOTIN && !(pdc_debug & DEBUG_BOOT_IO)))) ) {
         /* avoid debug messages */
     } else {
         iodc_log_call(arg, __FUNCTION__);
@@ -767,7 +943,7 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
         case ENTRY_IO_COUT: /* console output */
             c = (char*)ARG6;
             result[0] = len = ARG7;
-            if (HPA_is_serial_device(hpa) || HPA_is_graphics_device(hpa)) {
+            if (DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa)) {
                 while (len--)
                     printf("%c", *c++);
             }
@@ -775,7 +951,7 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
         case ENTRY_IO_CIN: /* console input, with 5 seconds timeout */
             c = (char*)ARG6;
             /* FIXME: Add loop to wait for up to 5 seconds for input */
-            if (HPA_is_serial_device(hpa))
+            if (DEV_is_serial_device(dev))
                 result[0] = parisc_serial_in(c, ARG7);
             else if (HPA_is_keyboard_device(hpa))
                 result[0] = lasips2_kbd_in(c, ARG7);
@@ -783,7 +959,7 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
     }
 
     /* boot medium I/O */
-    if (HPA_is_storage_device(hpa))
+    if (DEV_is_storage_device(dev))
         switch (option) {
             case ENTRY_IO_BOOTIN: /* boot medium IN */
             case ENTRY_IO_BBLOCK_IN: /* boot block medium IN */
@@ -841,19 +1017,25 @@ int __VISIBLE parisc_iodc_ENTRY_INIT(unsigned int *arg FUNC_MANY_ARGS)
     unsigned long hpa = ARG0;
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG4;
+    hppa_device_t *dev;
 
     iodc_log_call(arg, __FUNCTION__);
 
-    if (!HPA_is_storage_device(hpa) && !HPA_is_serial_device(hpa))
+    dev = find_hpa_device(hpa);
+    // dprintf(1, "HPA1 %lx  DEV %p  pci %p\n", hpa, dev, dev->pci);
+
+    if (!dev || !(DEV_is_storage_device(dev) || DEV_is_serial_device(dev) || DEV_is_network_device(dev)))
         return PDC_INVALID_ARG;
+    // dprintf(1, "HPA2 %lx  DEV %p\n", hpa, dev);
 
     switch (option) {
         case ENTRY_INIT_SRCH_FRST: /* 2: Search first */
+            if (DEV_is_network_device(dev))
+                return PDC_NE_BOOTDEV; /* No further boot devices */
             memcpy((void *)ARG3, &mod_path_emulated_drives.layers,
                 sizeof(mod_path_emulated_drives.layers)); /* fill ID_addr */
             result[0] = 0;
-            result[1] = HPA_is_serial_device(hpa) ? CL_DUPLEX:
-                HPA_is_storage_device(hpa) ? CL_RANDOM : 0;
+            result[1] = DEV_is_serial_device(dev) ? CL_DUPLEX : CL_RANDOM;
             result[2] = result[3] = 0; /* No network card, so no MAC. */
             return PDC_OK;
 	case ENTRY_INIT_SRCH_NEXT: /* 3: Search next */
@@ -861,9 +1043,11 @@ int __VISIBLE parisc_iodc_ENTRY_INIT(unsigned int *arg FUNC_MANY_ARGS)
         case ENTRY_INIT_MOD_DEV: /* 4: Init & test mod & dev */
         case ENTRY_INIT_DEV:     /* 5: Init & test dev */
             result[0] = 0; /* module IO_STATUS */
-            result[1] = HPA_is_serial_device(hpa) ? CL_DUPLEX:
-                HPA_is_storage_device(hpa) ? CL_RANDOM : 0;
-            result[2] = result[3] = 0; /* TODO?: MAC of network card. */
+            result[1] = DEV_is_serial_device(dev) ? CL_DUPLEX: CL_RANDOM;
+            if (DEV_is_network_device(dev))
+                result[2] = result[3] = 0x11221133; /* TODO?: MAC of network card. */
+            else
+                result[2] = result[3] = 0;
             return PDC_OK;
         case ENTRY_INIT_MOD:    /* 6: INIT */
             result[0] = 0; /* module IO_STATUS */
@@ -889,10 +1073,12 @@ int __VISIBLE parisc_iodc_ENTRY_TEST(unsigned int *arg FUNC_MANY_ARGS)
     unsigned long hpa = ARG0;
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG4;
+    hppa_device_t *dev;
 
     iodc_log_call(arg, __FUNCTION__);
 
-    if (!(HPA_is_storage_device(hpa) || HPA_is_serial_device(hpa)))
+    dev = find_hpa_device(hpa);
+    if (!dev || !(DEV_is_storage_device(dev) || DEV_is_serial_device(dev)))
         return PDC_INVALID_ARG;
 
     /* The options ARG1=0 and ARG1=1 are required. Others are optional. */
@@ -1061,7 +1247,7 @@ static int pdc_pim(unsigned int *arg)
         case PDC_PIM_TOC:
             hpa = mfctl(CPU_HPA_CR_REG); /* get CPU HPA from cr7 */
             i = index_of_CPU_HPA(hpa);
-            if (i < 0 || i >= HPPA_MAX_CPUS) {
+            if (i < 0 || i >= smp_cpus) {
                 *result = PDC_INVALID_ARG;
                 return PDC_OK;
             }
@@ -1097,9 +1283,16 @@ static int pdc_model(unsigned int *arg)
              * with old qemu versions which will try to run 64-bit instructions
              * kernel sr_disable_hash() function
              */
-            memcpy(result, (cpu_bit_width != 64) ?
-                    &machine_B160L.pdc_model : &current_machine->pdc_model,
+#if 1
+            memcpy(result, (cpu_bit_width == 64) ?
+                    &current_machine->pdc_model : &machine_B160L.pdc_model,
 			sizeof(current_machine->pdc_model));
+#else
+            memcpy(result, &current_machine->pdc_model, sizeof(current_machine->pdc_model));
+            struct pdc_model *p = (struct pdc_model *) result;
+            /* HACK */
+            p->arch_rev = 0x04;         /* 32-bit CPU, 64-bit has value 0x08 */
+#endif
             return PDC_OK;
         case PDC_MODEL_VERSIONS:
             switch (ARG3) {
@@ -1160,6 +1353,8 @@ static int pdc_cache(unsigned int *arg)
         case PDC_CACHE_INFO:
             machine_cache_info->it_size = tlb_entries;
             machine_cache_info->dt_size = tlb_entries;
+            machine_cache_info->it_conf = (struct pdc_tlb_cf) { .tc_sh = 3, .tc_page = 1, .tc_cst = 1, .tc_sr = 0, };
+            machine_cache_info->dt_conf = (struct pdc_tlb_cf) { .tc_sh = 3, .tc_page = 1, .tc_cst = 1, .tc_sr = 0, };
             machine_cache_info->it_loop = 1;
             machine_cache_info->dt_loop = 1;
 
@@ -1168,18 +1363,20 @@ static int pdc_cache(unsigned int *arg)
                     machine_cache_info->ic_count, machine_cache_info->ic_loop, machine_cache_info->ic_stride,
                     machine_cache_info->dc_count, machine_cache_info->dc_loop, machine_cache_info->dc_stride);
 #endif
-#if 1
-            /* Increase cc_block from 1 to 11. This increases icache_stride
-             * and dcache_stride to 32768 bytes. Revisit for HP-UX. */
-            machine_cache_info->dc_conf.cc_block = 11;
-            machine_cache_info->ic_conf.cc_block = 11;
+#if 0
+            machine_cache_info->dc_conf = (struct pdc_cache_cf) { 0 };  // .alias=1, .sh=3, };
+            machine_cache_info->ic_conf = (struct pdc_cache_cf) { 0 };  // .alias=1, .sh=3, };
 
             machine_cache_info->ic_size = 0; /* no instruction cache */
             machine_cache_info->ic_count = 0;
             machine_cache_info->ic_loop = 0;
+            machine_cache_info->ic_base = 0;
+            machine_cache_info->ic_stride = 0;
             machine_cache_info->dc_size = 0; /* no data cache */
             machine_cache_info->dc_count = 0;
             machine_cache_info->dc_loop = 0;
+            machine_cache_info->dc_base = 0;
+            machine_cache_info->dc_stride = 0;
 #endif
 
             memcpy(result, machine_cache_info, sizeof(*machine_cache_info));
@@ -1205,7 +1402,7 @@ static int pdc_hpa(unsigned int *arg)
         case PDC_HPA_PROCESSOR:
             hpa = mfctl(CPU_HPA_CR_REG); /* get CPU HPA from cr7 */
             i = index_of_CPU_HPA(hpa);
-            BUG_ON(i < 0); /* ARGH, someone modified cr7! */
+            BUG_ON(i < 0 || i >= smp_cpus); /* ARGH, someone modified cr7! */
             result[0] = hpa;    /* CPU_HPA */
             result[1] = i;      /* for SMP: 0,1,2,3,4...(num of this cpu) */
             return PDC_OK;
@@ -1226,12 +1423,12 @@ static int pdc_coproc(unsigned int *arg)
             /* Set one bit per cpu in ccr_functional and ccr_present.
                Ignore that specification only mentions 8 bits for cr10
                and set all FPUs functional */
-            mask = -1UL;
+            mask = 1UL;
             mtctl(mask, 10); /* initialize cr10 */
-            result[0] = mask;
-            result[1] = mask;
+            result[0] = 1; // mask
+            result[1] = 1; // mask
             result[17] = 1; // Revision
-            result[18] = 19; // Model
+            result[18] = has_astro ? 0x0f : 0x13; // Model
             return PDC_OK;
     }
     return PDC_BAD_OPTION;
@@ -1242,18 +1439,20 @@ static int pdc_iodc(unsigned int *arg)
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
     unsigned long hpa;
+    hppa_device_t *dev;
     struct pdc_iodc *iodc_p;
-    int hpa_index;
     unsigned char *c;
 
-    dprintf(0, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%x ARG4=%x ARG5=%x ARG6=%x\n", option, ARG3, ARG4, ARG5, ARG6);
+    // dprintf(1, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%x ARG4=%x ARG5=%x ARG6=%x\n", option, ARG3, ARG4, ARG5, ARG6);
     switch (option) {
         case PDC_IODC_READ:
             hpa = ARG3;
-            hpa_index = find_hpa_index(hpa);
-            if (hpa_index < 0)
+            dev = find_hpa_device(hpa);
+// dprintf(1, "pdc_iodc found dev %p\n", dev);
+            if (!dev)
                 return -4; // not found
-            iodc_p = parisc_devices[hpa_index].iodc;
+
+            iodc_p = dev->iodc;
 
             if (ARG4 == PDC_IODC_INDEX_DATA) {
                 // if (hpa == MEMORY_HPA)
@@ -1283,9 +1482,13 @@ static int pdc_iodc(unsigned int *arg)
             flush_data_cache((char*)ARG5, *result);
             return PDC_OK;
             break;
-        case PDC_IODC_NINIT:	/* non-destructive init */
+        case PDC_IODC_NINIT:	/* non-destructive init - for memory */
         case PDC_IODC_DINIT:	/* destructive init */
-            break;
+            result[0] = 0; /* IO_STATUS */
+            result[1] = 0; /* max_spa */
+            result[2] = ram_size; /* max memory */
+            result[3] = 0;
+            return PDC_OK;
         case PDC_IODC_MEMERR:
             result[0] = 0; /* IO_STATUS */
             result[1] = 0;
@@ -1514,55 +1717,77 @@ static int pdc_system_map(unsigned int *arg)
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
     struct pdc_module_path *mod_path;
+    hppa_device_t *dev;
     unsigned long hpa;
-    int hpa_index;
+    unsigned long hpa_index;
 
     // dprintf(0, "\n\nSeaBIOS: Info: PDC_SYSTEM_MAP function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
     switch (option) {
         case PDC_FIND_MODULE:
             hpa_index = ARG4;
-            if (hpa_index >= MAX_DEVICES)
+            dev = find_hppa_device_by_index(hpa_index, 0);
+            if (!dev)
                 return PDC_NE_MOD; // Module not found
-            hpa = parisc_devices[hpa_index].hpa;
-            if (!hpa)
-                return PDC_NE_MOD; // Module not found
+            hpa = dev->hpa;
+
+            if (0) {
+                dprintf(1, "PDC_FIND_MODULE dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
+                print_mod_path(dev->mod_path);
+                if (dev->pci)
+                    dprintf(1, "PCI %pP ", dev->pci);
+                dprintf(1, "\n");
+            }
+
+            memset(result, 0, 32*sizeof(long));
 
             mod_path = (struct pdc_module_path *)ARG3;
             if (mod_path)
-                *mod_path = *parisc_devices[hpa_index].mod_path;
+                *mod_path = *dev->mod_path;
 
+#if 1
             // *pdc_mod_info = *parisc_devices[hpa_index].mod_info; -> can be dropped.
-            memset(result, 0, 32*sizeof(long));
+            result[0] = dev->mod_info->mod_addr; //  for PDC_IODC
+            result[1] = dev->mod_info->mod_pgs;
+            result[2] = dev->num_addr;           //  dev->mod_info->add_addr;
+#else
             result[0] = hpa; // .mod_addr for PDC_IODC
-            result[1] = HPA_is_graphics_device(hpa) ? GFX_NUM_PAGES : 1;
-            result[2] = parisc_devices[hpa_index].num_addr; // additional addresses
+            result[1] = HPA_is_graphics_device(hpa) ? GFX_NUM_PAGES : dev->pci ? 1 : 1;
+            result[2] = dev->num_addr; // additional addresses
+#endif
             return PDC_OK;
 
         case PDC_FIND_ADDRESS:
             hpa_index = ARG3;
-            if (hpa_index >= MAX_DEVICES)
+            dev = find_hppa_device_by_index(hpa_index, 1);
+            if (!dev)
                 return PDC_NE_MOD; // Module not found
-            hpa = parisc_devices[hpa_index].hpa;
-            if (!hpa)
-                return PDC_NE_MOD; // Module not found
+            hpa = dev->hpa;
 
             memset(result, 0, 32*sizeof(long));
             ARG4 -= 1;
-            if (ARG4 >= parisc_devices[hpa_index].num_addr)
+            if (ARG4 >= dev->num_addr)
                 return PDC_INVALID_ARG;
-            result[0] = parisc_devices[hpa_index].add_addr[ARG4];
+            result[0] = dev->add_addr[ARG4];
             result[1] = HPA_is_graphics_device(hpa) ? GFX_NUM_PAGES : 1;
             return PDC_OK;
 
         case PDC_TRANSLATE_PATH:
             mod_path = (struct pdc_module_path *)ARG3;
-            hppa_device_t *dev = find_hppa_device_by_path(mod_path, result+3, 1);
+            hppa_device_t *dev = find_hppa_device_by_path(mod_path, &hpa_index, 1);
+            if (0) {
+                dprintf(1, "PDC_TRANSLATE_PATH dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
+                print_mod_path(mod_path);
+                if (dev && dev->pci)
+                    dprintf(1, "PCI %pP ", dev->pci);
+                dprintf(1, "\n");
+            }
             if (!dev)
                 return PDC_NE_MOD;
 
-            result[0] = dev->hpa;
-            result[1] = 1;
-            result[2] = 0;
+            result[0] = dev->mod_info->mod_addr; //  for PDC_IODC
+            result[1] = dev->mod_info->mod_pgs;
+            result[2] = dev->num_addr;           //  dev->mod_info->add_addr;
+            result[3] = hpa_index;
             return PDC_OK;
     }
     return PDC_BAD_OPTION;
@@ -2266,21 +2491,24 @@ static struct pz_device mem_boot_boot = {
     .cl_class = CL_RANDOM,
 };
 
-static void find_pci_slot_for_dev(unsigned int pciid, char *pci_slot)
+#if 0
+static void find_pci_slot_for_dev(unsigned int vendor, char *pci_slot)
 {
     struct pci_device *pci;
 
     foreachpci(pci)
-        if (pci->vendor == pciid) {
+        if (pci->vendor == vendor) {
             *pci_slot = (pci->bdf >> 3) & 0x0f;
             return;
         }
 }
+#endif
 
 /* find serial PCI card (to be used as console) */
 static void find_serial_pci_card(void)
 {
     struct pci_device *pci;
+    hppa_device_t *pdev;
     u32 pmem;
 
     if (!has_astro)
@@ -2293,36 +2521,40 @@ static void find_serial_pci_card(void)
     pci_config_maskw(pci->bdf, PCI_COMMAND, 0,
                      PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
     pmem = pci_enable_iobar(pci, PCI_BASE_ADDRESS_0);
-    pmem += IOS_DIST_BASE_ADDR;
     dprintf(1, "PCI: Enabling %pP for primary SERIAL PORT mem %x\n", pci, pmem);
-
-    pci = find_pci_from_HPA(pmem);
-    dprintf(1, "PCI: found PCI serial %pP \n", pci);
+    pmem += IOS_DIST_BASE_ADDR;
 
     /* set serial port for console output and keyboard input */
-    mem_cons_boot.hpa = pmem;
-    mem_kbd_boot.hpa = pmem;
+    pdev = &hppa_pci_devices[0];
+    while (pdev->pci != pci)
+        pdev++;
+    pdev->pci_addr = pmem;
+    mem_cons_boot.hpa = pdev->hpa;
+    mem_kbd_boot.hpa = pdev->hpa;
 }
 
 /* find SCSI PCI card (to be used as boot device) */
 static void find_scsi_pci_card(void)
 {
     struct pci_device *pci;
+    hppa_device_t *pdev;
     u32 pmem;
 
-    if (!has_astro)
-        return;
+    // if (!has_astro) return;
     pci = pci_find_class(PCI_CLASS_STORAGE_SCSI);
     if (!pci)
         return;
     dprintf(1, "PCI: Enabling %pP for primary SCSI PORT\n", pci);
     pmem = pci_enable_iobar(pci, PCI_BASE_ADDRESS_0);
-    pmem += IOS_DIST_BASE_ADDR;
     dprintf(1, "PCI: Enabling %pP for primary SCSI PORT mem %x\n", pci, pmem);
+    pmem += IOS_DIST_BASE_ADDR;
 
     /* set SCSI HPA */
-//HELGE
-    mem_boot_boot.hpa = pmem;
+    pdev = &hppa_pci_devices[0];
+    while (pdev->pci != pci)
+        pdev++;
+    pdev->pci_addr = pmem;
+    mem_boot_boot.hpa = pdev->hpa;
 }
 
 
@@ -2331,28 +2563,20 @@ static void prepare_boot_path(volatile struct pz_device *dest,
         const struct pz_device *source,
         unsigned int stable_offset)
 {
-    int hpa_index;
+    hppa_device_t *dev;
     unsigned long hpa;
     struct pdc_module_path *mod_path;
-    struct pdc_module_path temp_mod_path;
 
     hpa = source->hpa;
-    hpa_index = find_hpa_index(hpa);
+    dev = find_hpa_device(hpa);
+    BUG_ON(!dev);
 
-    if (HPA_is_storage_device(hpa))
+    if (DEV_is_storage_device(dev))
         mod_path = &mod_path_emulated_drives;
-    else if (hpa == LASI_UART_HPA) // HPA_is_serial_device(hpa))
-        mod_path = &mod_path_hpa_ffd05000;
-    else if (hpa == DINO_UART_HPA) // HPA_is_serial_device(hpa))
-        mod_path = &mod_path_hpa_fff83000;
-    else if (hpa_index >= 0)
-        mod_path = parisc_devices[hpa_index].mod_path;
+    else if (dev)
+        mod_path = dev->mod_path;
     else {
-        struct pci_device *pci;
-        pci = find_pci_from_HPA(hpa);
-        BUG_ON(!pci);
-        make_module_path_from_pcidev(pci, &temp_mod_path);
-        mod_path = &temp_mod_path;
+        BUG_ON(1);
     }
 
     /* copy device path to entry in PAGE0 */
@@ -2405,6 +2629,7 @@ void __VISIBLE start_parisc_firmware(void)
     // A 32-bit only CPU returns 31.
     mtctl(-1UL, 11);
     cpu_bit_width = (mfctl(11) == 63) ? 64 : 32;
+    // cpu_bit_width = 64; /* XXX HACK */
 
     if (smp_cpus > HPPA_MAX_CPUS)
         smp_cpus = HPPA_MAX_CPUS;
@@ -2563,8 +2788,10 @@ void __VISIBLE start_parisc_firmware(void)
     // coreboot_preinit();
 
     pci_setup();
-    if (has_astro)
+    if (has_astro) {
         iosapic_table_setup();
+    }
+    hppa_pci_build_devices_list();
 
     /* find serial PCI card when running on Astro */
     find_serial_pci_card();
