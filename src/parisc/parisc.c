@@ -7,6 +7,7 @@
 //
 // Example command line:
 // ./qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux -append root=/dev/sda5 cryptomgr.notests  console=ttyS0 earlycon=pdc -accel tcg,thread=multi,one-insn-per-tb=off -serial mon:stdio -smp cpus=1 -snapshot -nographic -machine B160L
+// /qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux -append "root=/dev/sda5 cryptomgr.notests  console=ttyS0 earlycon=pdc"   -accel tcg,thread=multi,one-insn-per-tb=off -serial mon:stdio -smp cpus=1 -nographic  -machine C3700 -device pci-serial-4x -device pci-ohci -device usb-tablet -device ES1370 -snapshot  # -fw_cfg opt/pdc_debug,string=255   # -d trace:serial\*  # ,mmu,trace:serial\*,trace:iosapic\*,trace:elroy\*,trace:astro\*,trace:pci\*
 
 #include "biosvar.h" // GET_BDA
 #include "bregs.h" // struct bregs
