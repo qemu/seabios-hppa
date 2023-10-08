@@ -4,6 +4,9 @@
 // Copyright (C) 2019 Sven Schnelle <svens@stackframe.org>
 //
 // This file may be distributed under the terms of the GNU LGPLv3 license.
+//
+// Example command line:
+// ./qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux -append root=/dev/sda5 cryptomgr.notests  console=ttyS0 earlycon=pdc -accel tcg,thread=multi,one-insn-per-tb=off -serial mon:stdio -smp cpus=1 -snapshot -nographic -machine B160L
 
 #include "biosvar.h" // GET_BDA
 #include "bregs.h" // struct bregs
