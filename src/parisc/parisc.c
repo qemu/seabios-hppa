@@ -539,7 +539,7 @@ void make_modinfo_from_pcidev(struct pci_device *pci,
     memset(p, 0, sizeof(*p));
     p->mod_addr = pfa;
     p->mod_pgs = 0;
-    p->add_addrs = 0; //  HPA_is_graphics_device(pfa) ? GFX_NUM_PAGES : 0;
+    p->add_addrs = HPA_is_graphics_device(pfa) ? GFX_NUM_PAGES : 0;
 };
 
 #define MAX_PCI_DEVICES         10
@@ -2747,7 +2747,10 @@ void __VISIBLE start_parisc_firmware(void)
         sti_rom_init();
         sti_console_init(&sti_proc_rom);
         PAGE0->proc_sti = (u32)&sti_proc_rom;
-        ps2port_setup();
+        if (has_astro)
+            kbd_init();
+        else
+            ps2port_setup();
     } else {
         remove_from_keep_list(LASI_GFX_HPA);
         remove_from_keep_list(LASI_PS2KBD_HPA);

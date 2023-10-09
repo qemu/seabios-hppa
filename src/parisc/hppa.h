@@ -382,6 +382,27 @@ static inline u8 readb(const void *addr) {
     return val;
 }
 
+/*  gsc_readX()/gsc_writeX() do no byteswapping */
+
+static inline void gsc_writel(void *addr, u32 val) {
+    barrier();
+    *(volatile u32 *)addr = val;
+}
+static inline void gsc_writeb(void *addr, u8 val) {
+    barrier();
+    *(volatile u8 *)addr = val;
+}
+static inline u32 gsc_readl(const void *addr) {
+    u32 val = *(volatile const u32 *)addr;
+    barrier();
+    return val;
+}
+static inline u8 gsc_readb(const void *addr) {
+    u8 val = *(volatile const u8 *)addr;
+    barrier();
+    return val;
+}
+
 // FLASH_FLOPPY not supported
 #define GDT_CODE     (0)
 #define GDT_DATA     (0)
