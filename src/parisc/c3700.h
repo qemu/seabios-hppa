@@ -269,27 +269,16 @@ static struct pdc_iodc iodc_data_hpa_fed10200 = {
 		.mod_path = &mod_path_hpa_fed3c000,\
 		.num_addr = HPA_fed3c000_num_addr,\
 		.add_addr = { HPA_fed3c000_add_addr } },\
-	{	.hpa = CPU_HPA    /* XXX: 0xfffa0000 */  ,\
-		.iodc = &iodc_data_hpa_fffa0000,\
-		.mod_info = &mod_info_hpa_fffa0000,\
-		.mod_path = &mod_path_hpa_fffa0000,\
-		.num_addr = HPA_fffa0000_num_addr,\
-		.add_addr = { HPA_fffa0000_add_addr } },\
 	{	.hpa = 0xfed10200,\
 		.iodc = &iodc_data_hpa_fed10200,\
 		.mod_info = &mod_info_hpa_fed10200,\
 		.mod_path = &mod_path_hpa_fed10200,\
 		.num_addr = HPA_fed10200_num_addr,\
 		.add_addr = { HPA_fed10200_add_addr } },\
+	{	.hpa = CPU_HPA    /* XXX: 0xfffa0000 */  ,\
+		.iodc = &iodc_data_hpa_fffa0000,\
+		.mod_info = &mod_info_hpa_fffa0000,\
+		.mod_path = &mod_path_hpa_fffa0000,\
+		.num_addr = HPA_fffa0000_num_addr,\
+		.add_addr = { HPA_fffa0000_add_addr } },\
 	{ 0, }
-
-#if 0
-/* hacked in from here */   \
-	{	.hpa = 0xffd05000,\
-		.iodc = &iodc_data_hpa_ffd05000,\
-		.mod_info = &mod_info_hpa_ffd05000,\
-		.mod_path = &mod_path_hpa_ffd05000,\
-		.num_addr = HPA_ffd05000_num_addr,\
-		.add_addr = { HPA_ffd05000_add_addr } },\
-
-#endif
