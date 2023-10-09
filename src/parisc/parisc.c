@@ -453,12 +453,18 @@ int DEV_is_network_device(hppa_device_t *dev)
     return ((dev->iodc->type & 0xf) == 0x0a); /* HPHW_FIO */
 }
 
+static int HPA_is_LASI_keyboard(unsigned long hpa)
+{
+    return !has_astro && (hpa == LASI_PS2KBD_HPA);
+}
 
-int HPA_is_keyboard_device(unsigned long hpa)
+#if 0
+static int HPA_is_keyboard_device(unsigned long hpa)
 {
     struct pci_device *pci;
     int ret;
-    if (!has_astro && (hpa == LASI_PS2KBD_HPA))
+
+    if (HPA_is_LASI_keyboard(hpa))
         return 1;
     pci = find_pci_from_HPA(hpa);
     if (!pci)
@@ -468,6 +474,7 @@ int HPA_is_keyboard_device(unsigned long hpa)
     dprintf(1, "PCI: is_keyboard? %pP -> %s\n", pci, ret?"Yes":"no");
     return ret;
 }
+#endif
 
 #define GFX_NUM_PAGES 0x2000
 int HPA_is_graphics_device(unsigned long hpa)
@@ -479,7 +486,7 @@ int HPA_is_graphics_device(unsigned long hpa)
 static const char *hpa_device_name(unsigned long hpa, int output)
 {
     return HPA_is_graphics_device(hpa) ? "GRAPHICS(1)" :
-            HPA_is_keyboard_device(hpa) ? "PS2" :
+            HPA_is_LASI_keyboard(hpa) ? "PS2" :
             ((hpa + 0x800) == PORT_SERIAL1) ?
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
 }
@@ -895,10 +902,12 @@ static char parisc_getchar(void)
     int count;
     char c;
 
-    if (HPA_is_serial_device(PAGE0->mem_kbd.hpa))
+    if (HPA_is_LASI_keyboard(PAGE0->mem_kbd.hpa))
+        count = lasips2_kbd_in(&c, sizeof(c));
+    else if (HPA_is_serial_device(PAGE0->mem_kbd.hpa))
         count = parisc_serial_in(&c, sizeof(c));
     else
-        count = lasips2_kbd_in(&c, sizeof(c));
+        BUG_ON(1);
     if (count == 0)
         c = 0;
     return c;
@@ -953,10 +962,10 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
         case ENTRY_IO_CIN: /* console input, with 5 seconds timeout */
             c = (char*)ARG6;
             /* FIXME: Add loop to wait for up to 5 seconds for input */
-            if (DEV_is_serial_device(dev))
-                result[0] = parisc_serial_in(c, ARG7);
-            else if (HPA_is_keyboard_device(hpa))
+            if (HPA_is_LASI_keyboard(hpa))
                 result[0] = lasips2_kbd_in(c, ARG7);
+            else if (DEV_is_serial_device(dev))
+                result[0] = parisc_serial_in(c, ARG7);
             return PDC_OK;
     }
 
