@@ -617,7 +617,7 @@ static hppa_device_t *find_hpa_device(unsigned long hpa)
 
 static void print_mod_path(struct pdc_module_path *p)
 {
-    dprintf(1, "PATH %d:%d:%d:%d:%d:%d.%d.%d ", p->path.bc[0], p->path.bc[1],
+    dprintf(1, "PATH %d:%d:%d:%d:%d:%d.%d$%d ", p->path.bc[0], p->path.bc[1],
             p->path.bc[2],p->path.bc[3],p->path.bc[4],p->path.bc[5],
             p->path.mod, p->layers[0]);
 }
@@ -1785,7 +1785,7 @@ static int pdc_system_map(unsigned int *arg)
         case PDC_TRANSLATE_PATH:
             mod_path = (struct pdc_module_path *)ARG3;
             hppa_device_t *dev = find_hppa_device_by_path(mod_path, &hpa_index, 1);
-            if (0) {
+            if (1) {
                 dprintf(1, "PDC_TRANSLATE_PATH dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
                 print_mod_path(mod_path);
                 if (dev && dev->pci)
@@ -1834,7 +1834,8 @@ static int pdc_mem_map(unsigned int *arg)
 
     switch (option) {
         case PDC_MEM_MAP_HPA:
-            // dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->bc[4], dp->mod);
+// NEEDS FIXING !!
+            dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->bc[4], dp->mod);
             dev = find_hppa_device_by_path((struct pdc_module_path *) dp, &index, 0);
             if (!dev)
                 return PDC_NE_MOD;
