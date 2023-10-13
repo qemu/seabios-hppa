@@ -340,6 +340,7 @@ static const char *hpa_name(unsigned long hpa)
     DO(DINO_SCSI_HPA)
     DO(CPU_HPA)
     DO(MEMORY_HPA)
+    DO(SCSI_HPA)
     DO(LASI_HPA)
     DO(LASI_UART_HPA)
     DO(LASI_SCSI_HPA)
@@ -596,6 +597,7 @@ static void hppa_pci_build_devices_list(void)
         BUG_ON(offs == -1UL);
         pfa = (unsigned long) elroy_port(0, offs);
         pfa += pci->bdf << 8;
+        pfa |= SCSI_HPA;
         dprintf(1, "PCI device #%d %pP bdf 0x%x at pfa 0x%lx\n", curr_pci_devices, pci, pci->bdf, pfa);
 
         pdev->hpa       = pfa;
@@ -1399,7 +1401,10 @@ static int pdc_cache(unsigned int *arg)
                     machine_cache_info->ic_count, machine_cache_info->ic_loop, machine_cache_info->ic_stride,
                     machine_cache_info->dc_count, machine_cache_info->dc_loop, machine_cache_info->dc_stride);
 #endif
-#if 0
+#if 1
+            machine_cache_info->ic_size = 1024; /* no instruction cache */
+            machine_cache_info->dc_size = 1024; /* no data cache */
+#elif 0
             machine_cache_info->dc_conf = (struct pdc_cache_cf) { 0 };  // .alias=1, .sh=3, };
             machine_cache_info->ic_conf = (struct pdc_cache_cf) { 0 };  // .alias=1, .sh=3, };
 
@@ -1459,10 +1464,10 @@ static int pdc_coproc(unsigned int *arg)
             /* Set one bit per cpu in ccr_functional and ccr_present.
                Ignore that specification only mentions 8 bits for cr10
                and set all FPUs functional */
-            mask = 1UL;
+            mask = 1UL << 7;
             mtctl(mask, 10); /* initialize cr10 */
-            result[0] = 1; // mask
-            result[1] = 1; // mask
+            result[0] = mask;
+            result[1] = mask;
             result[17] = 1; // Revision
             result[18] = has_astro ? 0x0f : 0x13; // Model
             return PDC_OK;
@@ -1495,7 +1500,7 @@ static int pdc_iodc(unsigned int *arg)
                     ARG6 = 2; // Memory modules return 2 bytes of IODC memory (result2 ret[0] = 0x6701f41 HI !!)
                 memcpy((void*) ARG5, iodc_p, ARG6);
                 c = (unsigned char *) ARG5;
-                printf("SeaBIOS: PDC_IODC get: hpa = 0x%lx, HV: 0x%x 0x%x IODC_SPA=0x%x  type 0x%x, \n", hpa, c[0], c[1], c[2], c[3]);
+                // printf("SeaBIOS: PDC_IODC get: hpa = 0x%lx, HV: 0x%x 0x%x IODC_SPA=0x%x  type 0x%x, \n", hpa, c[0], c[1], c[2], c[3]);
                 // c[0] = iodc_p->hversion_model; // FIXME. BROKEN HERE !!!
                 // c[1] = iodc_p->hversion_rev || (iodc_p->hversion << 4);
                 result[0] = ARG6;
@@ -1804,7 +1809,7 @@ static int pdc_system_map(unsigned int *arg)
         case PDC_TRANSLATE_PATH:
             mod_path = (struct pdc_module_path *)ARG3;
             hppa_device_t *dev = find_hppa_device_by_path(mod_path, &hpa_index, 1);
-            if (1) {
+            if (0) {
                 dprintf(1, "PDC_TRANSLATE_PATH dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
                 print_mod_path(mod_path);
                 if (dev && dev->pci)
@@ -2587,6 +2592,7 @@ static void find_scsi_pci_card(void)
         pdev++;
     pdev->pci_addr = pmem;
     mem_boot_boot.hpa = pdev->hpa;
+    dprintf(1, "PCI: Enabling BOOT DEVICE HPA %x\n", mem_boot_boot.hpa);
 }
 
 

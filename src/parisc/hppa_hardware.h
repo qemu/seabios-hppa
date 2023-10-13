@@ -30,6 +30,8 @@
 
 #define PCI_HPA         DINO_HPA        /* PCI bus */
 
+#define SCSI_HPA        0xf1040000      /* emulated SCSI, needs to be in f region */
+
 /* offsets to DINO HPA: */
 #define DINO_PCI_ADDR           0x064
 #define DINO_CONFIG_DATA        0x068
