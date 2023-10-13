@@ -6,6 +6,10 @@
 // This file may be distributed under the terms of the GNU LGPLv3 license.
 //
 // Example command line:
+//
+//Funktioniert:
+//./qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux -append "root=/dev/sda5 cryptomgr.notests"   -smp cpus=2  -snapshot -machine C3700  -vnc :1  -fw_cfg opt/console,string=serial -serial mon:stdio  -device secondary-vga #-d in_asm # -fw_cfg opt/pdc_debug,string=255 2>&1| grep ohci  # -d trace:serial\*  # ,mmu,trace:serial\*,trace:iosapic\*,trace:elroy\*,trace:astro\*,trace:pci\*
+//
 // ./qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux -append root=/dev/sda5 cryptomgr.notests  console=ttyS0 earlycon=pdc -accel tcg,thread=multi,one-insn-per-tb=off -serial mon:stdio -smp cpus=1 -snapshot -nographic -machine B160L
 // /qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux -append "root=/dev/sda5 cryptomgr.notests  console=ttyS0 earlycon=pdc"   -accel tcg,thread=multi,one-insn-per-tb=off -serial mon:stdio -smp cpus=1 -nographic  -machine C3700 -device pci-serial-4x -device pci-ohci -device usb-tablet -device ES1370 -snapshot  # -fw_cfg opt/pdc_debug,string=255   # -d trace:serial\*  # ,mmu,trace:serial\*,trace:iosapic\*,trace:elroy\*,trace:astro\*,trace:pci\*
 
@@ -476,16 +480,32 @@ static int HPA_is_keyboard_device(unsigned long hpa)
 }
 #endif
 
+int HPA_is_LASI_graphics(unsigned long hpa)
+{
+    hppa_device_t *dev;
+
+    dev = find_hpa_device(hpa);
+    if (!dev)
+        return 0;
+    return (dev->iodc->sversion_model == 0x003b); /* XXX */
+}
 #define GFX_NUM_PAGES 0x2000
 int HPA_is_graphics_device(unsigned long hpa)
 {
-    return (hpa == LASI_GFX_HPA) || (hpa == 0xf4000000) ||
-           (hpa == 0xf8000000)   || (hpa == 0xfa000000);
+    hppa_device_t *dev;
+
+    dev = find_hpa_device(hpa);
+    if (!dev)
+        return 0;
+    if (dev->pci)
+        return (dev->pci->class >> 8) == PCI_BASE_CLASS_DISPLAY;
+    return (dev->iodc->sversion_model == 0x3b); /* XXX */
 }
 
 static const char *hpa_device_name(unsigned long hpa, int output)
 {
-    return HPA_is_graphics_device(hpa) ? "GRAPHICS(1)" :
+    return HPA_is_LASI_graphics(hpa) ? "GRAPHICS(1)" :
+            HPA_is_graphics_device(hpa) ? "VGA" :
             HPA_is_LASI_keyboard(hpa) ? "PS2" :
             ((hpa + 0x800) == PORT_SERIAL1) ?
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
@@ -617,9 +637,9 @@ static hppa_device_t *find_hpa_device(unsigned long hpa)
 
 static void print_mod_path(struct pdc_module_path *p)
 {
-    dprintf(1, "PATH %d:%d:%d:%d:%d:%d.%d$%d ", p->path.bc[0], p->path.bc[1],
+    dprintf(1, "PATH %d/%d/%d/%d/%d/%d/%d:%d.%d.%d ", p->path.bc[0], p->path.bc[1],
             p->path.bc[2],p->path.bc[3],p->path.bc[4],p->path.bc[5],
-            p->path.mod, p->layers[0]);
+            p->path.mod, p->layers[0], p->layers[1], p->layers[2]);
 }
 
 static unsigned long keep_list[20] = { PARISC_KEEP_LIST };
@@ -659,11 +679,13 @@ static int keep_add_generic_devices(void)
 
     while (dev->hpa) {
 	switch (dev->iodc->type) {
+	case 0x0041:	/* Memory. Save HPA in PAGE0 entry. */
+                PAGE0->imm_hpa = dev->hpa;
+                /* fallthrough */
 	case 0x0007:	/* GSC+ Port bridge */
 	case 0x004d:	/* Dino PCI bridge */
 	case 0x004b:	/* Core Bus adapter (LASI) */
 	case 0x0040:	/* CPU */
-	case 0x0041:	/* Memory */
 	case 0x000d:	/* Elroy PCI bridge */
 	case 0x000c:	/* Runway port */
 		keep_list[i++] = dev->hpa;
@@ -859,12 +881,12 @@ static void parisc_serial_out(char c)
         dprintf(0, "%c", c);
         return;
     }
-    if (has_astro) {
-        hppa_device_t *dev = find_hpa_device(addr);
-        BUG_ON(!dev);
+    hppa_device_t *dev = find_hpa_device(addr);
+    BUG_ON(!dev);
+    if (dev->pci_addr)
         addr = dev->pci_addr;
-    } else
-        addr += 0x800;
+    else
+        addr += 0x800;  /* add offset for serial port on GSC */
 //  dprintf(1,"parisc_serial_out  addr %x\n", addr);
 
     if (c == '\n')
@@ -882,7 +904,7 @@ static void parisc_serial_out(char c)
 
 static void parisc_putchar_internal(char c)
 {
-    if (HPA_is_graphics_device(PAGE0->mem_cons.hpa))
+    if (HPA_is_LASI_graphics(PAGE0->mem_cons.hpa))
         sti_putc(c);
     else
         parisc_serial_out(c);
@@ -937,8 +959,10 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
     struct disk_op_s disk_op;
 
     dev = find_hpa_device(hpa);
-    if (!dev)
+    if (!dev) {
+        // BUG_ON(1);
         return PDC_INVALID_ARG;
+    }
 
     if (1 &&
             (((DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa)) && option == ENTRY_IO_COUT) ||
@@ -954,7 +978,7 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
         case ENTRY_IO_COUT: /* console output */
             c = (char*)ARG6;
             result[0] = len = ARG7;
-            if (DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa)) {
+            if (DEV_is_serial_device(dev) || HPA_is_LASI_graphics(hpa)) {
                 while (len--)
                     printf("%c", *c++);
             }
@@ -1076,6 +1100,7 @@ int __VISIBLE parisc_iodc_ENTRY_SPA(unsigned int *arg FUNC_MANY_ARGS)
 int __VISIBLE parisc_iodc_ENTRY_CONFIG(unsigned int *arg FUNC_MANY_ARGS)
 {
     iodc_log_call(arg, __FUNCTION__);
+    // BUG_ON(1);
     return PDC_BAD_OPTION;
 }
 
@@ -1466,14 +1491,14 @@ static int pdc_iodc(unsigned int *arg)
             iodc_p = dev->iodc;
 
             if (ARG4 == PDC_IODC_INDEX_DATA) {
-                // if (hpa == MEMORY_HPA)
-                //	ARG6 = 2; // Memory modules return 2 bytes of IODC memory (result2 ret[0] = 0x6701f41 HI !!)
+                if (iodc_p->type == 0x0041) // Memory ?
+                    ARG6 = 2; // Memory modules return 2 bytes of IODC memory (result2 ret[0] = 0x6701f41 HI !!)
                 memcpy((void*) ARG5, iodc_p, ARG6);
                 c = (unsigned char *) ARG5;
-                // printf("SeaBIOS: PDC_IODC get: hpa = 0x%lx, HV: 0x%x 0x%x IODC_SPA=0x%x  type 0x%x, \n", hpa, c[0], c[1], c[2], c[3]);
+                printf("SeaBIOS: PDC_IODC get: hpa = 0x%lx, HV: 0x%x 0x%x IODC_SPA=0x%x  type 0x%x, \n", hpa, c[0], c[1], c[2], c[3]);
                 // c[0] = iodc_p->hversion_model; // FIXME. BROKEN HERE !!!
                 // c[1] = iodc_p->hversion_rev || (iodc_p->hversion << 4);
-                *result = ARG6;
+                result[0] = ARG6;
                 return PDC_OK;
             }
 
@@ -1755,16 +1780,10 @@ static int pdc_system_map(unsigned int *arg)
             if (mod_path)
                 *mod_path = *dev->mod_path;
 
-#if 1
             // *pdc_mod_info = *parisc_devices[hpa_index].mod_info; -> can be dropped.
             result[0] = dev->mod_info->mod_addr; //  for PDC_IODC
             result[1] = dev->mod_info->mod_pgs;
             result[2] = dev->num_addr;           //  dev->mod_info->add_addr;
-#else
-            result[0] = hpa; // .mod_addr for PDC_IODC
-            result[1] = HPA_is_graphics_device(hpa) ? GFX_NUM_PAGES : dev->pci ? 1 : 1;
-            result[2] = dev->num_addr; // additional addresses
-#endif
             return PDC_OK;
 
         case PDC_FIND_ADDRESS:
@@ -2523,8 +2542,9 @@ static void find_serial_pci_card(void)
     hppa_device_t *pdev;
     u32 pmem;
 
-    if (!has_astro)
+    if (!has_astro)     /* use built-in LASI serial port for console */
         return;
+
     pci = pci_find_class(PCI_CLASS_COMMUNICATION_SERIAL);
     if (!pci)
         return;
@@ -2689,7 +2709,6 @@ void __VISIBLE start_parisc_firmware(void)
 
     tlb_entries = romfile_loadint("/etc/cpu/tlb_entries", 256);
     dprintf(0, "fw_cfg: TLB entries %d\n", tlb_entries);
-// hlt();
 
     powersw_ptr = (int *) (unsigned long)
         romfile_loadint("/etc/hppa/power-button-addr", (unsigned long)&powersw_nop);
@@ -2697,7 +2716,7 @@ void __VISIBLE start_parisc_firmware(void)
     /* real-time-clock addr */
     rtc_ptr = (int *) (unsigned long)
         romfile_loadint("/etc/hppa/rtc-addr", (unsigned long) LASI_RTC_HPA);
-    dprintf(0, "RTC PTR 0x%x\n", (int)rtc_ptr);
+    // dprintf(0, "RTC PTR 0x%x\n", (int)rtc_ptr);
 
     /* use -fw_cfg opt/pdc_debug,string=255 to enable all firmware debug infos */
     pdc_debug = romfile_loadstring_to_int("opt/pdc_debug", 0);
@@ -2749,7 +2768,7 @@ void __VISIBLE start_parisc_firmware(void)
     PAGE0->pad0[3] = PORT_QEMU_CFG_CTL;
     *powersw_ptr = 0x01; /* button not pressed, hw controlled. */
 
-    PAGE0->imm_hpa = MEMORY_HPA;
+    /* PAGE0->imm_hpa - is set later (MEMORY_HPA) */
     PAGE0->imm_spa_size = ram_size;
     PAGE0->imm_max_mem = ram_size;
 
@@ -2819,7 +2838,7 @@ void __VISIBLE start_parisc_firmware(void)
     find_scsi_pci_card();
 
     // Initialize boot paths (graphics & keyboard)
-    if (pdc_console == CONSOLE_DEFAULT) {
+    if (pdc_console != CONSOLE_SERIAL) {
 	if (artist_present())
             pdc_console = CONSOLE_GRAPHICS;
 	else

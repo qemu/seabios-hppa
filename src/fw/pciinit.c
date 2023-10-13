@@ -509,6 +509,12 @@ static void mch_mem_addr_setup(struct pci_device *dev, void *arg)
         pci_io_low_end = acpi_pm_base;
 }
 
+/*
+ * parisc: If mmio bar is bigger than this size, map the bar it into the
+ * directed ELMMIO instead of the distributed LMMIO region.
+ */
+#define PARISC_MMIO_LIMIT       0x10000
+
 #if CONFIG_PARISC
 static int dino_pci_slot_get_irq(struct pci_device *pci, int pin)
 {
@@ -565,6 +571,35 @@ static void parisc_mem_addr_setup(struct pci_device *dev, void *arg)
 }
 #endif /* CONFIG_PARISC */
 
+static unsigned long add_lmmio_directed_range(unsigned long size, int rope)
+{
+#ifdef CONFIG_PARISC
+    int i;
+
+    /* Astro has 4 directed ranges. */
+    for (i = 0; i < 4; i++) {
+            unsigned long addr;
+            void *reg = (void *)(unsigned long) (ASTRO_BASE_HPA + i * 0x18);
+
+            addr = readl(reg + LMMIO_DIRECT0_BASE);
+            if (addr & 1)
+                    continue;       /* already used */
+
+            /* fixme for multiple addresses */
+            /* Linux driver currently only allows one distr. range per IOC */
+            addr = 0xfa000000;  /* graphics card area for parisc, f8 is used by artist */
+            addr += i * 0x02000000;
+
+            writel(reg + LMMIO_DIRECT0_BASE, addr | 1);
+            writel(reg + LMMIO_DIRECT0_ROUTE, rope & (ROPES_PER_IOC - 1));
+            size = 0xfff8000000 | ~(size-1); /* is -1 correct? */
+            // dprintf(1, "use  addr %lx  size %lx\n", addr|1, size);
+            writel(reg + LMMIO_DIRECT0_MASK, size);
+            return addr;
+    }
+#endif /* CONFIG_PARISC */
+    return -1UL;
+}
 
 static const struct pci_device_id pci_platform_tbl[] = {
     PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441,
@@ -813,7 +848,8 @@ static u64 pci_region_sum(struct pci_region *r)
     u64 sum = 0;
     struct pci_region_entry *entry;
     hlist_for_each_entry(entry, &r->list, node) {
-        sum += entry->size;
+        if (entry->size <= PARISC_MMIO_LIMIT && CONFIG_PARISC)
+            sum += entry->size;
     }
     return sum;
 }
@@ -1123,6 +1159,8 @@ pci_region_map_one_entry(struct pci_region_entry *entry, u64 addr)
 
     u16 bdf = entry->dev->bdf;
     u64 limit = addr + entry->size - 1;
+    if (!entry->size)
+        return;
     if (entry->type == PCI_REGION_TYPE_IO) {
         pci_config_writeb(bdf, PCI_IO_BASE, addr >> PCI_IO_SHIFT);
         pci_config_writew(bdf, PCI_IO_BASE_UPPER16, 0);
@@ -1147,7 +1185,13 @@ static void pci_region_map_entries(struct pci_bus *busses, struct pci_region *r)
     struct pci_region_entry *entry;
     hlist_for_each_entry_safe(entry, n, &r->list, node) {
         u64 addr = r->base;
-        r->base += entry->size;
+        if (entry->size <= PARISC_MMIO_LIMIT && CONFIG_PARISC)
+            r->base += entry->size;
+        else {
+            addr = add_lmmio_directed_range(entry->size, 0);
+            if (addr == -1UL)
+                hlt();
+        }
         if (entry->bar == -1)
             // Update bus base address if entry is a bridge region
             busses[entry->dev->secondary_bus].r[entry->type].base = addr;

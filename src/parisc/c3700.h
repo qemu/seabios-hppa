@@ -179,24 +179,19 @@ static struct pdc_module_path mod_path_hpa_fffa0000 = {
 	.layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
 };
 static struct pdc_iodc iodc_data_hpa_fffa0000 = {
-#if 0 // original C3700:
+#if 1 // original C3700:
 	.hversion_model = 0x005d,
-	.hversion = 0x00c0,
-	.spa = 0x0000,
-	.type = 0x0040,
-	.sversion_rev = 0x0000,
-	.sversion_model = 0x0002,
-	.sversion_opt = 0x0040,
+	.hversion = 0x00c0,             // C3700: c0, B160: 20
 #else
         /* this is from B160L */
         .hversion_model = 0x0050,
         .hversion = 0x0020,
+#endif
         .spa = 0x0000,
         .type = 0x0040,
         .sversion_rev = 0x0000,
         .sversion_model = 0x0002,
         .sversion_opt = 0x0040,
-#endif
 	.rev = 0x0000,
 	.dep = 0x0000,
 	.features = 0x0000,
@@ -275,6 +270,12 @@ static struct pdc_iodc iodc_data_hpa_fed10200 = {
 		.mod_path = &mod_path_hpa_fed10200,\
 		.num_addr = HPA_fed10200_num_addr,\
 		.add_addr = { HPA_fed10200_add_addr } },\
+	{	.hpa = 0xf8000000,   /* HACKED IN: Coral GSC graphics */ \
+		.iodc = &iodc_data_hpa_f8000000,\
+		.mod_info = &mod_info_hpa_f8000000,\
+		.mod_path = &mod_path_hpa_f8000000,\
+		.num_addr = HPA_f8000000_num_addr,\
+		.add_addr = { HPA_f8000000_add_addr } },\
 	{	.hpa = CPU_HPA    /* XXX: 0xfffa0000 */  ,\
 		.iodc = &iodc_data_hpa_fffa0000,\
 		.mod_info = &mod_info_hpa_fffa0000,\
