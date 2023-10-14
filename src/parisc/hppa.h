@@ -14,7 +14,7 @@
 #include "byteorder.h" // le16_to_cpu
 
 /* Pointer to zero-page of PA-RISC */
-#define PAGE0 ((volatile struct zeropage *) 0UL)
+#define PAGE0 ((struct zeropage *) 0UL)
 
 #define   PSW_I   0x00000001
 

@@ -129,9 +129,10 @@ char qemu_version[16] = "unknown version";
 char qemu_machine[16] = "B160L";
 char cpu_bit_width;
 char has_astro;
+#define PCI_HPA         DINO_HPA        /* initial temp. PCI bus */
+unsigned long pci_hpa = PCI_HPA;    /* HPA of Dino or Elroy0 */
 unsigned long hppa_port_pci_cmd  = (PCI_HPA + DINO_PCI_ADDR);
 unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
-
 
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
@@ -512,6 +513,13 @@ static const char *hpa_device_name(unsigned long hpa, int output)
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
 }
 
+static void print_mod_path(struct pdc_module_path *p)
+{
+    dprintf(1, "PATH %d/%d/%d/%d/%d/%d/%d:%d.%d.%d ", p->path.bc[0], p->path.bc[1],
+            p->path.bc[2],p->path.bc[3],p->path.bc[4],p->path.bc[5],
+            p->path.mod, p->layers[0], p->layers[1], p->layers[2]);
+}
+
 void make_module_path_from_pcidev(struct pci_device *pci,
             struct pdc_module_path *p)
 {
@@ -546,11 +554,11 @@ void make_iodc_from_pcidev(struct pci_device *pci,
     p->sversion_model = 0;
     p->sversion_opt = 0;
     p->rev = 0x0099;
-    p->features = 0x0001;
     p->length = 1;
 
     switch (pci->class) {
     case PCI_CLASS_STORAGE_SCSI:
+        p->features = 0x0001;
         p->type = 0x0084;
         break;
     case PCI_CLASS_COMMUNICATION_SERIAL:
@@ -635,13 +643,6 @@ static hppa_device_t *find_hpa_device(unsigned long hpa)
             return &hppa_pci_devices[i];
     }
     return NULL;
-}
-
-static void print_mod_path(struct pdc_module_path *p)
-{
-    dprintf(1, "PATH %d/%d/%d/%d/%d/%d/%d:%d.%d.%d ", p->path.bc[0], p->path.bc[1],
-            p->path.bc[2],p->path.bc[3],p->path.bc[4],p->path.bc[5],
-            p->path.mod, p->layers[0], p->layers[1], p->layers[2]);
 }
 
 static unsigned long keep_list[20] = { PARISC_KEEP_LIST };
@@ -775,35 +776,37 @@ static int compare_module_path(struct pdc_module_path *path,
     int i;
 
     if (path->path.mod != search->path.mod)
-        return -1;
+        return 0;
 
     for(i = 0; i < ARRAY_SIZE(path->path.bc); i++) {
         if (path->path.bc[i] != search->path.bc[i])
-            return -1;
+            return 0;
     }
 
     if (check_layers) {
         for(i = 0; i < ARRAY_SIZE(path->layers); i++) {
             if (path->layers[i] != search->layers[i])
-                return -1;
+                return 0;
         }
     }
-    return 0;
+    return 1;
 }
 
-static hppa_device_t *find_hppa_device_by_path(struct pdc_module_path *search,
-                                        unsigned long *index, int check_layers)
+static hppa_device_t *find_hppa_device_by_path(unsigned long hpa,
+                            struct pdc_module_path *search,
+                            unsigned long *index, int check_layers)
 {
     hppa_device_t *dev;
     int i, nr = 0;
 
     for (i = 0; i < (MAX_DEVICES-1); i++) {
         dev = parisc_devices + i;
-        if (!dev->hpa)
+        if (dev->hpa != hpa)
             continue;
 
-        if (!compare_module_path(dev->mod_path, search, check_layers)) {
-            *index = nr;
+        if (compare_module_path(dev->mod_path, search, check_layers)) {
+            if (index)
+                *index = nr;
             return dev;
         }
         nr++;
@@ -812,8 +815,9 @@ static hppa_device_t *find_hppa_device_by_path(struct pdc_module_path *search,
     /* search PCI devices */
     for (i = 0; i < curr_pci_devices; i++) {
         dev = hppa_pci_devices + i;
-        if (!compare_module_path(dev->mod_path, search, check_layers)) {
-            *index = nr;
+        if (compare_module_path(dev->mod_path, search, check_layers)) {
+            if (index)
+                *index = nr;
             return dev;
         }
         nr++;
@@ -883,13 +887,24 @@ static void parisc_serial_out(char c)
         dprintf(0, "%c", c);
         return;
     }
-    hppa_device_t *dev = find_hpa_device(addr);
+    if (0) {
+        dprintf(1,"parisc_serial_out  search hpa %x   ", PAGE0->mem_cons.hpa);
+        print_mod_path(&PAGE0->mem_cons.dp);
+        dprintf(1,"  \n");
+    }
+    hppa_device_t *dev;
+    dev = find_hppa_device_by_path(addr, &PAGE0->mem_cons.dp, NULL, 0);
+    if (0) {
+        dprintf(1,"parisc_serial_out  hpa %x\n", PAGE0->mem_cons.hpa);
+        print_mod_path(dev->mod_path);
+    }
+    if (!dev) hlt();
     BUG_ON(!dev);
     if (dev->pci_addr)
         addr = dev->pci_addr;
     else
         addr += 0x800;  /* add offset for serial port on GSC */
-//  dprintf(1,"parisc_serial_out  addr %x\n", addr);
+//  dprintf(1,"  addr %x\n", addr);
 
     if (c == '\n')
         parisc_serial_out('\r');
@@ -1808,7 +1823,7 @@ static int pdc_system_map(unsigned int *arg)
 
         case PDC_TRANSLATE_PATH:
             mod_path = (struct pdc_module_path *)ARG3;
-            hppa_device_t *dev = find_hppa_device_by_path(mod_path, &hpa_index, 1);
+            hppa_device_t *dev = find_hppa_device_by_path(0, mod_path, &hpa_index, 1); // XXX
             if (0) {
                 dprintf(1, "PDC_TRANSLATE_PATH dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
                 print_mod_path(mod_path);
@@ -1852,15 +1867,15 @@ static int pdc_mem_map(unsigned int *arg)
 {
     unsigned long option = ARG1;
     struct pdc_memory_map *memmap = (struct pdc_memory_map *) ARG2;
-    struct device_path *dp = (struct device_path *) ARG3;
+    struct pdc_module_path *dp = (struct pdc_module_path *) ARG3;
     hppa_device_t *dev;
     unsigned long index;
 
     switch (option) {
         case PDC_MEM_MAP_HPA:
 // NEEDS FIXING !!
-            dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->bc[4], dp->mod);
-            dev = find_hppa_device_by_path((struct pdc_module_path *) dp, &index, 0);
+            dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
+            dev = find_hppa_device_by_path(memmap->hpa, (struct pdc_module_path *) dp, &index, 0); // ??
             if (!dev)
                 return PDC_NE_MOD;
             memcpy(memmap, dev->mod_info, sizeof(*memmap));
@@ -1979,11 +1994,11 @@ static int pdc_pci_index(unsigned int *arg)
             memcpy((void *)ARG4, irt_table, irt_table_entries * 16);
             return PDC_OK;
         case PDC_PCI_PCI_PATH_TO_PCI_HPA:
-            // BUG_ON(1);
-            result[0] = has_astro ? 0xfed00000 : PCI_HPA;
-            return has_astro ? PDC_OK : PDC_BAD_OPTION;
+            BUG_ON(1);
+            result[0] = pci_hpa;
+            return PDC_OK;
         case PDC_PCI_PCI_HPA_TO_PCI_PATH:
-            // BUG_ON(1);
+            BUG_ON(1);
             break;
     }
     return PDC_BAD_OPTION;
@@ -2521,7 +2536,7 @@ static struct pz_device mem_kbd_boot = {
 };
 
 static struct pz_device mem_boot_boot = {
-    .dp.flags = PF_AUTOBOOT,
+    .dp.path.flags = PF_AUTOBOOT,
     .hpa = DINO_SCSI_HPA,  // will be overwritten
     .iodc_io = (unsigned long) &iodc_entry,
     .cl_class = CL_RANDOM,
@@ -2619,13 +2634,13 @@ static void prepare_boot_path(volatile struct pz_device *dest,
 
     /* copy device path to entry in PAGE0 */
     memcpy((void*)dest, source, sizeof(*source));
-    memcpy((void*)&dest->dp, mod_path, sizeof(struct device_path));
+    memcpy((void*)&dest->dp, mod_path, sizeof(struct pdc_module_path));
 
     /* copy device path to stable storage */
     memcpy(&stable_storage[stable_offset], mod_path, sizeof(*mod_path));
 
     BUG_ON(sizeof(*mod_path) != 0x20);
-    BUG_ON(sizeof(struct device_path) != 0x20);
+    BUG_ON(sizeof(struct pdc_module_path) != 0x20);
 }
 
 static int artist_present(void)
@@ -2699,13 +2714,19 @@ void __VISIBLE start_parisc_firmware(void)
 
     /* which machine shall we emulate? */
     str = romfile_loadfile("/etc/hppa/machine", NULL);
-    if (!str)
-	str = "B160L";
+    if (!str) {
+        str = "B160L";
+        current_machine = &machine_B160L;
+        pci_hpa = DINO_HPA;
+        hppa_port_pci_cmd  = pci_hpa + DINO_PCI_ADDR;
+        hppa_port_pci_data = pci_hpa + DINO_CONFIG_DATA;
+    }
     if (strcmp(str, "C3700") == 0) {
-        current_machine = &machine_C3700;
         has_astro = 1;
-        hppa_port_pci_cmd  = 0xfed30000 + 0x040;
-        hppa_port_pci_data = 0xfed30000 + 0x048;
+        current_machine = &machine_C3700;
+        pci_hpa = (unsigned long) ELROY0_BASE_HPA;
+        hppa_port_pci_cmd  = pci_hpa + 0x040;
+        hppa_port_pci_data = pci_hpa + 0x048;
         /* no serial port for now, will find later */
         mem_cons_boot.hpa = 0;
         mem_kbd_boot.hpa = 0;
