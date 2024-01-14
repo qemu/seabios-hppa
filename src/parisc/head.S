@@ -281,7 +281,12 @@ END(startup)
 /*******************************************************/
 
 ENTRY(start_kernel)
+#ifdef CONFIG_64BIT
 	bv,n	0(%r22)
+#else
+	ldw	-0x34(%sp),%r1
+	bv,n	0(%r1)
+#endif
 END(start_kernel)
 
 /*******************************************************
