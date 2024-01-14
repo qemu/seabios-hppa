@@ -112,7 +112,7 @@ void wrmsr_smp(u32 index, u64 val) { }
 #define initrd_end		boot_args[4]
 #define smp_cpus		boot_args[5]
 #define pdc_debug		boot_args[6]
-#define fw_cfg_port		boot_args[7]
+#define fw_cfg_port		F_EXTEND(boot_args[7])
 
 /* flags for pdc_debug */
 #define DEBUG_PDC       0x01
@@ -202,6 +202,7 @@ void __VISIBLE __noreturn hlt(void)
     if (pdc_debug)
         printf("HALT initiated from %p\n",  __builtin_return_address(0));
     printf("SeaBIOS wants SYSTEM HALT.\n\n");
+while (1) {} ;
     /* call qemu artificial "halt" asm instruction */
     asm volatile("\t.word 0xfffdead0": : :"memory");
     while (1);
