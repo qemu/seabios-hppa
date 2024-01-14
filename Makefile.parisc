@@ -69,18 +69,20 @@ COMMONCFLAGS := -I$(OUT) -Isrc -Ivgasrc -Os -MD -g \
     -Wall -Wno-strict-aliasing -Wold-style-definition -Wno-address-of-packed-member \
     -Wno-stringop-overflow -Wno-array-bounds \
     $(call cc-option,$(CC),-Wtype-limits,) \
-    -mdisable-fpregs -ffreestanding \
-    -fno-builtin-printf -fno-common -fomit-frame-pointer  -fno-ipa-sra -freg-struct-return -fno-delete-null-pointer-checks 
-# -ffreestanding -fdata-sections -fno-common -fno-merge-constants -mdisable-fpregs 
-# COMMONCFLAGS += $(call cc-option,$(CC),-nopie,)
-# COMMONCFLAGS += $(call cc-option,$(CC),-fno-pie,)
+    -fomit-frame-pointer \
+    -freg-struct-return -ffreestanding -fno-delete-null-pointer-checks \
+    -fdata-sections -fno-common -fno-merge-constants -mdisable-fpregs \
+    -fno-builtin-printf -fno-ipa-sra
+COMMONCFLAGS-64 =
+COMMONCFLAGS-32 =
+COMMONCFLAGS += $(call cc-option,$(CC),-nopie,)
+COMMONCFLAGS += $(call cc-option,$(CC),-fno-pie,)
 COMMONCFLAGS += $(call cc-option,$(CC),-fno-stack-protector,)
 COMMONCFLAGS += $(call cc-option,$(CC),-fno-stack-protector-all,)
 COMMONCFLAGS += $(call cc-option,$(CC),-fstack-check=no,)
-# COMMONCFLAGS += $(call cc-option,$(CC),-mfast-indirect-calls,)
+COMMONCFLAGS-32 += $(call cc-option,$(CC),-mfast-indirect-calls,)
 
-COMMONCFLAGS-64 = -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
-COMMONCFLAGS-32 =
+COMMONCFLAGS-64 += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 COMMONCFLAGS    += $(COMMONCFLAGS-$(BITS))
 
 COMMA := ,
