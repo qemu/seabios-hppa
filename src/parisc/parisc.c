@@ -1386,7 +1386,7 @@ static const char *pdc_name(unsigned long num)
         return "UNKNOWN!";
 }
 
-static int pdc_chassis(unsigned int *arg)
+static int pdc_chassis(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1401,7 +1401,7 @@ static int pdc_chassis(unsigned int *arg)
             ARG4 = (ARG3 >> 17) & 7;
             chassis_code = ARG3 & 0xffff;
             if (pdc_debug & DEBUG_CHASSIS)
-                printf("\nPDC_CHASSIS: %s (%d), %sCHASSIS  0x%0x\n",
+                printf("\nPDC_CHASSIS: %s (%ld), %sCHASSIS  0x%x\n",
                        systat[ARG4], ARG4, (ARG3>>16)&1 ? "blank display, ":"", chassis_code);
             // fall through
         case PDC_CHASSIS_WARN:
@@ -1419,7 +1419,7 @@ static int pdc_chassis(unsigned int *arg)
     return PDC_BAD_PROC;
 }
 
-static int pdc_pim(unsigned int *arg)
+static int pdc_pim(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1468,7 +1468,7 @@ static int pdc_pim(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_model(unsigned int *arg)
+static int pdc_model(unsigned long *arg)
 {
     const char *model_str = current_machine->pdc_modelstr;
     unsigned long option = ARG1;
@@ -1541,11 +1541,11 @@ static int pdc_model(unsigned int *arg)
             strtcpy((char *)ARG4, "001122334455", 16);
             return PDC_OK;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_MODEL function %d %x %x %x %x\n", ARG1, ARG2, ARG3, ARG4, ARG5);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_MODEL function %ld %lx %lx %lx %lx\n", ARG1, ARG2, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_cache(unsigned int *arg)
+static int pdc_cache(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1593,11 +1593,11 @@ static int pdc_cache(unsigned int *arg)
             result[0] = 0;
             return PDC_OK;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_CACHE function %d %x %x %x %x\n", ARG1, ARG2, ARG3, ARG4, ARG5);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_CACHE function %ld %lx %lx %lx %lx\n", ARG1, ARG2, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_hpa(unsigned int *arg)
+static int pdc_hpa(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1618,7 +1618,7 @@ static int pdc_hpa(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_coproc(unsigned int *arg)
+static int pdc_coproc(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1637,7 +1637,7 @@ static int pdc_coproc(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_iodc(unsigned int *arg)
+static int pdc_iodc(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1699,11 +1699,11 @@ static int pdc_iodc(unsigned int *arg)
             result[3] = 0;
             return PDC_OK;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_IODC function %ld ARG3=%x ARG4=%x ARG5=%x ARG6=%x\n", option, ARG3, ARG4, ARG5, ARG6);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_IODC function %ld ARG3=%lx ARG4=%lx ARG5=%lx ARG6=%lx\n", option, ARG3, ARG4, ARG5, ARG6);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_tod(unsigned int *arg)
+static int pdc_tod(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1724,16 +1724,16 @@ static int pdc_tod(unsigned int *arg)
             result[3] = 0x5a6c; /* CR_acc (interval timer) */
             return PDC_OK;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_TOD function %ld ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_TOD function %ld ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_stable(unsigned int *arg)
+static int pdc_stable(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
 
-    // dprintf(0, "\n\nSeaBIOS: PDC_STABLE function %ld ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
+    // dprintf(0, "\n\nSeaBIOS: PDC_STABLE function %ld ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
     switch (option) {
         case PDC_STABLE_READ:
             if ((ARG2 + ARG4) > STABLE_STORAGE_SIZE)
@@ -1757,7 +1757,7 @@ static int pdc_stable(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_nvolatile(unsigned int *arg)
+static int pdc_nvolatile(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1785,7 +1785,7 @@ static int pdc_nvolatile(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_add_valid(unsigned int *arg)
+static int pdc_add_valid(unsigned long *arg)
 {
     unsigned long option = ARG1;
 
@@ -1804,11 +1804,11 @@ static int pdc_add_valid(unsigned int *arg)
         return 1;
     if (ARG2 <= 0xffffffff)
         return PDC_OK;
-    dprintf(0, "\n\nSeaBIOS: FAILED!!!! PDC_ADD_VALID function %ld ARG2=%x called.\n", option, ARG2);
+    dprintf(0, "\n\nSeaBIOS: FAILED!!!! PDC_ADD_VALID function %ld ARG2=%lx called.\n", option, ARG2);
     return PDC_REQ_ERR_0; /* Operation completed with a requestor bus error. */
 }
 
-static int pdc_proc(unsigned int *arg)
+static int pdc_proc(unsigned long *arg)
 {
     extern void enter_smp_idle_loop(void);
     unsigned long option = ARG1;
@@ -1829,7 +1829,7 @@ static int pdc_proc(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_block_tlb(unsigned int *arg)
+static int pdc_block_tlb(unsigned long *arg)
 {
     int ret;
 
@@ -1850,7 +1850,7 @@ static int pdc_block_tlb(unsigned int *arg)
     return ret;
 }
 
-static int pdc_tlb(unsigned int *arg)
+static int pdc_tlb(unsigned long *arg)
 {
 #if 0
     /* still buggy, let's avoid it to keep things simple. */
@@ -1868,7 +1868,7 @@ static int pdc_tlb(unsigned int *arg)
     return PDC_BAD_PROC;
 }
 
-static int pdc_mem(unsigned int *arg)
+static int pdc_mem(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1896,11 +1896,11 @@ static int pdc_mem(unsigned int *arg)
             /* not yet implemented for 64-bit */
             return PDC_BAD_PROC;
     }
-    dprintf(0, "\n\nSeaBIOS: Check PDC_MEM option %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
+    dprintf(0, "\n\nSeaBIOS: Check PDC_MEM option %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_PROC;
 }
 
-static int pdc_psw(unsigned int *arg)
+static int pdc_psw(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -1927,7 +1927,7 @@ static int pdc_psw(unsigned int *arg)
     return PDC_OK;
 }
 
-static int pdc_system_map(unsigned int *arg)
+static int pdc_system_map(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -2001,7 +2001,7 @@ static int pdc_system_map(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_soft_power(unsigned int *arg)
+static int pdc_soft_power(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -2024,7 +2024,7 @@ static int pdc_soft_power(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_mem_map(unsigned int *arg)
+static int pdc_mem_map(unsigned long *arg)
 {
     unsigned long option = ARG1;
     struct pdc_memory_map *memmap = (struct pdc_memory_map *) ARG2;
@@ -2043,13 +2043,13 @@ static int pdc_mem_map(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_io(unsigned int *arg)
+static int pdc_io(unsigned long *arg)
 {
     unsigned long option = ARG1;
 
     switch (option) {
         case PDC_IO_READ_AND_CLEAR_ERRORS:
-            dprintf(0, "\n\nSeaBIOS: PDC_IO called with ARG2=%x ARG3=%x ARG4=%x\n", ARG2, ARG3, ARG4);
+            dprintf(0, "\n\nSeaBIOS: PDC_IO called with ARG2=%lx ARG3=%lx ARG4=%lx\n", ARG2, ARG3, ARG4);
             // return PDC_BAD_OPTION;
         case PDC_IO_RESET:
         case PDC_IO_RESET_DEVICES:
@@ -2058,7 +2058,7 @@ static int pdc_io(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_lan_station_id(unsigned int *arg)
+static int pdc_lan_station_id(unsigned long *arg)
 {
     unsigned long option = ARG1;
 
@@ -2120,7 +2120,7 @@ static void iosapic_table_setup(void)
     }
 }
 
-static int pdc_pci_index(unsigned int *arg)
+static int pdc_pci_index(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -2156,7 +2156,7 @@ static int pdc_pci_index(unsigned int *arg)
     return PDC_BAD_OPTION;
 }
 
-static int pdc_initiator(unsigned int *arg)
+static int pdc_initiator(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -2179,11 +2179,11 @@ static int pdc_initiator(unsigned int *arg)
         case PDC_RETURN_TABLE:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_INITIATOR function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_INITIATOR function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_pat_cell(unsigned int *arg)
+static int pdc_pat_cell(unsigned long *arg)
 {
     unsigned long option = ARG1;
     struct pdc_pat_cell_num *cell_info = (void *)ARG2;
@@ -2198,11 +2198,11 @@ static int pdc_pat_cell(unsigned int *arg)
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_CELL function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_CELL function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_pat_cpu(unsigned int *arg)
+static int pdc_pat_cpu(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -2226,11 +2226,11 @@ static int pdc_pat_cpu(unsigned int *arg)
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_CPU OPTION %lu called with ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_CPU OPTION %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_pat_pd(unsigned int *arg)
+static int pdc_pat_pd(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
@@ -2260,11 +2260,11 @@ static int pdc_pat_pd(unsigned int *arg)
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_PD function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_PD function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
-static int pdc_pat_mem(unsigned int *arg)
+static int pdc_pat_mem(unsigned long *arg)
 {
     unsigned long option = ARG1;
 
@@ -2272,20 +2272,20 @@ static int pdc_pat_mem(unsigned int *arg)
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_MEM function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_MEM function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
 
-int __VISIBLE parisc_pdc_entry(unsigned int *arg FUNC_MANY_ARGS)
+int __VISIBLE parisc_pdc_entry(unsigned long *arg FUNC_MANY_ARGS)
 {
     unsigned long proc = ARG0;
     unsigned long option = ARG1;
 
     if (pdc_debug & DEBUG_PDC) {
-        printf("\nSeaBIOS: Start PDC proc %s(%d) option %d result=0x%x ARG3=0x%x %s ",
+        printf("\nSeaBIOS: Start PDC proc %s(%ld) option %ld result=0x%lx ARG3=0x%lx %s ",
                 pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3, (proc == PDC_IODC)?hpa_name(ARG3):"");
-        printf("ARG4=0x%x ARG5=0x%x ARG6=0x%x ARG7=0x%x\n", ARG4, ARG5, ARG6, ARG7);
+        printf("ARG4=0x%lx ARG5=0x%lx ARG6=0x%lx ARG7=0x%lx\n", ARG4, ARG5, ARG6, ARG7);
     }
 
     switch (proc) {
@@ -2373,7 +2373,7 @@ int __VISIBLE parisc_pdc_entry(unsigned int *arg FUNC_MANY_ARGS)
             return pdc_io(arg);
 
         case PDC_BROADCAST_RESET:
-            dprintf(0, "\n\nSeaBIOS: PDC_BROADCAST_RESET (reset system) called with ARG3=%x ARG4=%x\n", ARG3, ARG4);
+            dprintf(0, "\n\nSeaBIOS: PDC_BROADCAST_RESET (reset system) called with ARG3=%lx ARG4=%lx\n", ARG3, ARG4);
             reset();
             return PDC_OK;
 
@@ -2404,7 +2404,7 @@ int __VISIBLE parisc_pdc_entry(unsigned int *arg FUNC_MANY_ARGS)
         case PDC_PAT_CHASSIS_LOG:
             if (firmware_width_locked)
                 return PDC_BAD_PROC;
-            dprintf(0, "\n\nSeaBIOS: PDC_PAT_CHASSIS_LOG OPTION %lu called with ARG2=%x ARG3=%x ARG4=%x\n", option, ARG2, ARG3, ARG4);
+            dprintf(0, "\n\nSeaBIOS: PDC_PAT_CHASSIS_LOG OPTION %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
             return PDC_BAD_PROC;
 
         case PDC_PAT_CPU:
@@ -2423,9 +2423,9 @@ int __VISIBLE parisc_pdc_entry(unsigned int *arg FUNC_MANY_ARGS)
             return pdc_pat_mem(arg);
     }
 
-    printf("\n** WARNING **: SeaBIOS: Unimplemented PDC proc %s(%d) option %d result=%x ARG3=%x ",
+    printf("\n** WARNING **: SeaBIOS: Unimplemented PDC proc %s(%ld) option %ld result=%lx ARG3=%lx ",
             pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3);
-    printf("ARG4=%x ARG5=%x ARG6=%x ARG7=%x\n", ARG4, ARG5, ARG6, ARG7);
+    printf("ARG4=%lx ARG5=%lx ARG6=%lx ARG7=%lx\n", ARG4, ARG5, ARG6, ARG7);
 
     BUG_ON(pdc_debug);
     return PDC_BAD_PROC;
