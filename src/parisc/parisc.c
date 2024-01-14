@@ -989,10 +989,10 @@ static unsigned long parisc_serial_in(char *c, unsigned long maxchars)
     } else
         addr += 0x800;
     while (count < maxchars) {
-        u8 lsr = inb(addr+SEROFF_LSR);
+        u8 lsr = inb(F_EXTEND(addr+SEROFF_LSR));
         if (lsr & 0x01) {
             // Success - can read data
-            *c++ = inb(addr+SEROFF_DATA);
+            *c++ = inb(F_EXTEND(addr+SEROFF_DATA));
             count++;
         }
         if (timer_check(end))
@@ -1034,10 +1034,10 @@ static void parisc_serial_out(char c)
         parisc_serial_out('\r');
 
     for (;;) {
-        u8 lsr = inb(addr+SEROFF_LSR);
+        u8 lsr = inb(F_EXTEND(addr+SEROFF_LSR));
         if ((lsr & 0x60) == 0x60) {
             // Success - can write data
-            outb(c, addr+SEROFF_DATA);
+            outb(c, F_EXTEND(addr+SEROFF_DATA));
             break;
         }
     }

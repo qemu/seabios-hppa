@@ -122,7 +122,7 @@ putc(struct putcinfo *action, char c)
         return;
     }
 
-#if 0
+#if 1
     void (*func)(struct putcinfo *info, char c) = GET_GLOBAL(action->func);
     func(action, c);
 #else
