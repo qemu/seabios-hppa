@@ -26,6 +26,14 @@
 #endif
 	.endm
 
+	.macro	load32_firmware value, reg
+	ldil	L%\value, \reg
+	ldo	R%\value(\reg), \reg
+#ifdef CONFIG_64BIT
+	depdi   FIRMWARE_HIGH, 31, 32, \reg
+#endif
+	.endm
+
 ;! set the W bit
 #define set_PSW_W	.level 2.0 !	ssm PSW_W_SM, %r0 !	.level LEVEL
 
@@ -212,7 +220,7 @@ ENTRY(enter_smp_idle_loop)
 	mtctl	%r0, CR_EIRR
 
 	/* Load IVT for SMT tiny loop exit */
-	load32	BOOTADDR(smp_ivt),%r1
+	load32_firmware	BOOTADDR(smp_ivt),%r1
 	mtctl	%r1, CR_IVA
 
 	/* enable CPU local interrupts */
@@ -237,8 +245,7 @@ $smp_exit_loop:
 	/* ldw	0x28(%r0),%r0	MEM_RENDEZ_HI - assume addr < 4GB */
 	cmpb,=,n  %r0,%r3,enter_smp_idle_loop
 	nop			/* failed backward branch is nullified */
-	load32	startup, %rp
-	load_fw_upper32 %rp
+	load32_firmware	startup, %rp
 	bv,n	0(%r3)
 
 $is_monarch_cpu:
@@ -255,8 +262,7 @@ $is_monarch_cpu:
 
 $is_monarch_cpu_reboot:
 	/* Initialize stack pointer */
-	load32	BOOTADDR(parisc_stack),%r1
-	load_fw_upper32	%r1
+	load32_firmware BOOTADDR(parisc_stack),%r1
 	ldo	FRAME_SIZE(%r1),%sp
 
 	/* Initialize the global data pointer */
@@ -272,8 +278,7 @@ $bss_loop:
 	cmpb,<<,n %r3,%r4,$bss_loop
 	STREGM	%r0,WORD_LEN(%r3)
 
-	load32	BOOTADDR(start_parisc_firmware),%r3
-	load_fw_upper32 %r3
+	load32_firmware	BOOTADDR(start_parisc_firmware),%r3
 	bv	0(%r3)
 	copy	%r0,%r2
 END(startup)
@@ -311,7 +316,7 @@ END(start_kernel)
         .import pim_toc_data, data
 ENTRY(toc_asm_entry)
         /* serialize CPUs on entry */
-        load32  BOOTADDR(toc_lock),TEMP
+        load32_firmware BOOTADDR(toc_lock),TEMP
 0:      ldcw,co 0(TEMP),TEMP2
         cmpib,= 0,TEMP2,0b
         nop
@@ -319,7 +324,7 @@ ENTRY(toc_asm_entry)
         mfctl   CPU_HPA_CR_REG, TEMP2   /* get CPU HPA from cr7 */
         extru   TEMP2,31-12,4, TEMP     /* extract cpu id */
 
-        load32  BOOTADDR(pim_toc_data), PIM_PTR
+        load32_firmware BOOTADDR(pim_toc_data), PIM_PTR
 
 1:      comib,= 0,TEMP,2f
         ldo     -1(TEMP),TEMP
@@ -383,12 +388,12 @@ ENTRY(toc_asm_entry)
 
 5:      /* call the "C" toc_handler in SeaBIOS */
         loadgp
-        load32  BOOTADDR(parisc_stack), %sp
+        load32_firmware BOOTADDR(parisc_stack), %sp
         b,l     toc_handler, %r2
         ldo     FRAME_SIZE(%sp),%sp
 
         /* call OS handler, in case it returns reset the system */
-        load32  BOOTADDR(reset), %rp
+        load32_firmware BOOTADDR(reset), %rp
         bv,n    0(%ret0)
 END(toc_asm_entry)
 
@@ -399,7 +404,7 @@ END(toc_asm_entry)
 
 	.macro  DEF_IVA_ENTRY
 	.align 32
-	load32 BOOTADDR($smp_exit_loop),%r1
+	load32_firmware BOOTADDR($smp_exit_loop),%r1
 	bv	0(%r1)
 	nop
 	.endm
@@ -418,21 +423,35 @@ END(smp_ivt)
 
 #ifdef CONFIG_64BIT
 ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
-	stw %rp,-20(%sp)
-	stw %dp,-32(%sp)
-	stw %arg0,-36(%sp)
-	stw %arg1,-40(%sp)
-	stw %arg2,-44(%sp)
-	stw %arg3,-48(%sp)
-	ldo -FRAME_SIZE(%sp),%arg0
+	/* clear upper bits */
+	depdi   0, 31, 32, %arg0
+	depdi   0, 31, 32, %arg1
+	depdi   0, 31, 32, %arg2
+	depdi   0, 31, 32, %arg3
+	depdi   0, 31, 32, %r22
+	depdi   0, 31, 32, %r21
+	depdi   0, 31, 32, %r20
+	depdi   0, 31, 32, %r19
+ENTRY(pdc_entry_64_64)	/* 64-bit call on 64-bit PDC */
+	std %rp,-0x10(%sp)
+	stw %dp,-0x18(%sp)
+	std %arg0,-0x20(%sp)
+	std %arg1,-0x28(%sp)
+	std %arg2,-0x30(%sp)
+	std %arg3,-0x38(%sp)
+	std %r22, -0x40(%sp)
+	std %r21, -0x48(%sp)
+	std %r20, -0x50(%sp)
+	std %r19, -0x58(%sp)
+	ldo -0x58(%sp),%arg0	/* points to arg7 */
 
 	loadgp
 	b,l parisc_pdc_entry, %rp
 	ldo FRAME_SIZE(%sp),%sp
 
 	ldo -FRAME_SIZE(%sp),%sp
-	ldw -20(%sp),%rp
-	ldw -32(%sp),%dp
+	ldd -0x10(%sp),%rp
+	ldd -0x18(%sp),%dp
 	bv,n %r0(%rp)
 END(pdc_entry_64_32)
 #else
@@ -463,17 +482,15 @@ ENTRY(pdc_entry_table)
 	   page I-2 in parisc2 spec */
 	addb,*>,n %r0,%r0,pdc_called_narrow /* branch if narrow addressing */
 	/* we know that PDC was called with PSW.W=1 */
-	nop
-	nop
-	nop
+	load32_firmware pdc_entry_64_64,%r1
+	bv,n %r0(%r1)
 pdc_called_narrow:
 	/* we know that PDC was called with PSW.W=0 */
-	depdi   0, 31, 32, %arg0
-	depdi   0, 31, 32, %arg1
-	depdi   0, 31, 32, %arg2
-	depdi   0, 31, 32, %arg3
+	set_PSW_W	/* enable PSW.W */
+	load32_firmware pdc_entry_64_32,%r1
+	bv,n %r0(%r1)
 #else
-	load32 pdc_entry_32,%r1	/* entry of 32-bit PDC */
+	load32_firmware pdc_entry_32,%r1	/* entry of 32-bit PDC */
 	bv,n %r0(%r1)
 #endif
 pdc_entry_table_end:
