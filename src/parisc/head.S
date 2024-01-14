@@ -281,10 +281,7 @@ END(startup)
 /*******************************************************/
 
 ENTRY(start_kernel)
-	bve,l (%r22),%rp
-	nop
-	.word 0xfffdead0	/* halt emulator */
-	nop
+	bv,n	0(%r22)
 END(start_kernel)
 
 /*******************************************************

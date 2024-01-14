@@ -210,8 +210,13 @@ static inline u32 ror(u32 word, unsigned int shift)
 
 
 /* F_EXTEND() is used to access I/O ports. ROM_EXTEND() to access firmware ROM/RAM */
+#if defined(__LP64__)
 #define F_EXTEND(x)   ((unsigned long)(0xfffffffful<<32) | (x))
 #define ROM_EXTEND(x) ((unsigned long)(0xfffffff0ul<<32) | (x))
+#else
+#define F_EXTEND(x)   ((unsigned long)(x))
+#define ROM_EXTEND(x) ((unsigned long)(x))
+#endif
 
 static inline void builtin_console_out(char c)
 {
