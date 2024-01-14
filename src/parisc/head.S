@@ -450,6 +450,8 @@ ENTRY(pdc_entry_table)
 	load32 pdc_entry,%r1
 	clear_PSW_W
 	bv,n %r0(%r1)
+pdc_entry_table_end:
+	.export pdc_entry_table_end
 END(pdc_entry_table)
 
 ENTRY(iodc_entry_table)

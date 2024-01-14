@@ -149,7 +149,8 @@ unsigned int tlb_entries = 256;
 #define PARISC_SERIAL_CONSOLE   PORT_SERIAL1
 
 extern char pdc_entry;
-extern char pdc_entry_table[4*4];
+extern char pdc_entry_table;
+extern char pdc_entry_table_end;
 extern char iodc_entry[512];
 extern char iodc_entry_table[14*4];
 
@@ -3084,8 +3085,9 @@ void __VISIBLE start_parisc_firmware(void)
     /* memset((void*)PAGE0, 0, sizeof(*PAGE0)); */
 
     /* copy pdc_entry entry into low memory. */
-    memcpy((void*)MEM_PDC_ENTRY, &pdc_entry_table, 4*4);
-    flush_data_cache((char*)MEM_PDC_ENTRY, 4*4);
+    i = &pdc_entry_table_end - &pdc_entry_table;
+    memcpy((void*)MEM_PDC_ENTRY, &pdc_entry_table, i);
+    flush_data_cache((char*)MEM_PDC_ENTRY, i);
 
     PAGE0->memc_cont = ram_size;
     PAGE0->memc_phsize = ram_size;
