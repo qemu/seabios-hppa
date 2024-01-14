@@ -3271,14 +3271,16 @@ void __VISIBLE start_parisc_firmware(void)
 
     /* directly start Linux kernel if it was given on qemu command line. */
     if (linux_kernel_entry > 1) {
-        void (*start_kernel)(unsigned long mem_free, unsigned long cline,
-                unsigned long rdstart, unsigned long rdend);
+        extern void start_kernel(unsigned long mem_free, unsigned long cline,
+                                 unsigned long rdstart,  unsigned long rdend,
+                                 unsigned long kernel_start_address);
+        unsigned long kernel_entry = linux_kernel_entry;
 
         printf("Autobooting Linux kernel which was loaded by qemu...\n\n");
-        start_kernel = (void *) linux_kernel_entry;
 	/* zero out kernel entry point in case we reset the machine: */
         linux_kernel_entry = 0;
-        start_kernel(PAGE0->mem_free, cmdline, initrd_start, initrd_end);
+        start_kernel(PAGE0->mem_free, cmdline, initrd_start, initrd_end,
+                kernel_entry);
         hlt(); /* this ends the emulator */
     }
 

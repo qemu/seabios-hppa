@@ -278,6 +278,15 @@ $bss_loop:
 	copy	%r0,%r2
 END(startup)
 
+/*******************************************************/
+
+ENTRY(start_kernel)
+	bve,l (%r22),%rp
+	nop
+	.word 0xfffdead0	/* halt emulator */
+	nop
+END(start_kernel)
+
 /*******************************************************
   TOC handler
   Write all GRs, CRs, SRs and the iaoq_back and iasq_back registers (in
