@@ -282,7 +282,8 @@ END(startup)
 
 ENTRY(start_kernel)
 #ifdef CONFIG_64BIT
-	bv,n	0(%r22)
+	bv	0(%r22)
+	clear_PSW_W	/* clear PSW before we start the kernel! */
 #else
 	ldw	-0x34(%sp),%r1
 	bv,n	0(%r1)
@@ -415,18 +416,14 @@ END(smp_ivt)
 	PDC and IODC entry
  *******************************************************/
 
-/* XXX: memory location in page0: vec_pad0[], temporary storage for PSW.W */
-#define PSW_OFFSET1	24
-#define PSW_OFFSET2	28
-
-ENTRY(pdc_entry)
+#ifdef CONFIG_64BIT
+ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
 	stw %rp,-20(%sp)
 	stw %dp,-32(%sp)
 	stw %arg0,-36(%sp)
 	stw %arg1,-40(%sp)
 	stw %arg2,-44(%sp)
 	stw %arg3,-48(%sp)
-	stw %r31,PSW_OFFSET1(%r0)	/* store PSW_W */
 	ldo -FRAME_SIZE(%sp),%arg0
 
 	loadgp
@@ -436,22 +433,49 @@ ENTRY(pdc_entry)
 	ldo -FRAME_SIZE(%sp),%sp
 	ldw -20(%sp),%rp
 	ldw -32(%sp),%dp
-	ldw PSW_OFFSET1(%r0),%r31
-	load32 0x8000000,%r1	/* mask PSW_W */
-	and,= %r31,%r1,%r0
-	bv %r0(%rp)		/* return without setting PSW_W */
-	nop
-	bv %r0(%rp)		/* return with setting PSW_W */
-	.level 2.0
-	nop // ssm PSW_W_SM,%r0
-	.level LEVEL
-END(pdc_entry)
+	bv,n %r0(%rp)
+END(pdc_entry_64_32)
+#else
+ENTRY(pdc_entry_32)	/* 32-bit PDC */
+	stw %rp,-20(%sp)
+	stw %dp,-32(%sp)
+	stw %arg0,-36(%sp)
+	stw %arg1,-40(%sp)
+	stw %arg2,-44(%sp)
+	stw %arg3,-48(%sp)
+	ldo -FRAME_SIZE(%sp),%arg0
+
+	loadgp
+	b,l parisc_pdc_entry, %rp
+	ldo FRAME_SIZE(%sp),%sp
+
+	ldo -FRAME_SIZE(%sp),%sp
+	ldw -20(%sp),%rp
+	ldw -32(%sp),%dp
+	bv,n %r0(%rp)
+END(pdc_entry_32)
+#endif
 
 /* pdc_entry_table will be copied into low memory. */
 ENTRY(pdc_entry_table)
-	load32 pdc_entry,%r1
-	clear_PSW_W
+#ifdef CONFIG_64BIT
+	/* see section "Testing the Current State of the PSW W-Bit",
+	   page I-2 in parisc2 spec */
+	addb,*>,n %r0,%r0,pdc_called_narrow /* branch if narrow addressing */
+	/* we know that PDC was called with PSW.W=1 */
+	nop
+	nop
+	nop
+pdc_called_narrow:
+	/* we know that PDC was called with PSW.W=0 */
+	depdi   0, 31, 32, %arg0
+	depdi   0, 31, 32, %arg1
+	depdi   0, 31, 32, %arg2
+	depdi   0, 31, 32, %arg3
+#else
+	load32 pdc_entry_32,%r1	/* entry of 32-bit PDC */
 	bv,n %r0(%r1)
+#endif
 pdc_entry_table_end:
 	.export pdc_entry_table_end
 END(pdc_entry_table)
@@ -475,8 +499,6 @@ ENTRY(iodc_entry)
 	stw %arg1,-40(%sp)
 	stw %arg2,-44(%sp)
 	stw %arg3,-48(%sp)
-	clear_PSW_W
-	stw %r31,PSW_OFFSET2(%r0)	/* store PSW_W */
 	ldo -FRAME_SIZE(%sp),%arg0
 
 	loadgp
@@ -487,17 +509,7 @@ ENTRY(iodc_entry)
 	ldo -FRAME_SIZE(%sp),%sp
 	ldw -20(%sp),%rp
 	ldw -32(%sp),%dp
-
-// .word 0xfffdead0
-	ldw PSW_OFFSET2(%r0),%r31
-	load32 0x8000000,%r1	/* mask PSW_W */
-	and,= %r31,%r1,%r0
-	bv %r0(%rp)		/* return without setting PSW_W */
-	nop
-	bv %r0(%rp)		/* return with setting PSW_W */
-	.level 2.0
-	nop // ssm PSW_W_SM,%r0
-	.level LEVEL
+	bv,n %r0(%rp)
 END(iodc_entry)
 
 /****************************************************************
