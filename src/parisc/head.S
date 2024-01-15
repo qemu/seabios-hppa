@@ -529,8 +529,8 @@ ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
 	cmpb,>>,n %r1,%r0,.L1
 
 5:	/* return to caller */
-	bv %r0(%rp)
 	clear_PSW_W
+	bv,n %r0(%rp)
 
 ENTRY(pdc_entry_64_64)	/* 64-bit call on 64-bit PDC */
 	std %rp,-0x10(%sp)
