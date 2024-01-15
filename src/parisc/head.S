@@ -450,9 +450,11 @@ ENTRY(pdc_entry_32)	/* 32-bit PDC */
 	ldo -FRAME_SIZE(%sp),%arg0
 
 	loadgp
-	b,l parisc_pdc_entry, %rp
+	load32		MEM_PDC_ENTRY + 1f - pdc_entry_table,%rp
+	load32 parisc_pdc_entry, %r1
+	bv              0(%r1)
 	ldo FRAME_SIZE(%sp),%sp
-
+1:
 	ldo -FRAME_SIZE(%sp),%sp
 	ldw -20(%sp),%rp
 	ldw -32(%sp),%dp
@@ -464,25 +466,40 @@ END(pdc_entry_table)
 #ifdef CONFIG_64BIT
 ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
 	/* clear upper bits */
+	depdi   0, 31, 32, %sp
+	depdi   0, 31, 32, %rp
+	depdi   0, 31, 32, %dp
 	depdi   0, 31, 32, %arg0
 	depdi   0, 31, 32, %arg1
 	depdi   0, 31, 32, %arg2
 	depdi   0, 31, 32, %arg3
-	depdi   0, 31, 32, %r22
-	depdi   0, 31, 32, %r21
-	depdi   0, 31, 32, %r20
-	depdi   0, 31, 32, %r19
+
+	copy %sp,%r1	/* copy original stack pointer */
+	ldo 2*FRAME_SIZE(%sp),%sp /* build new 64-bit stack */
 
 	std %rp,-0x10(%sp)
-	stw %dp,-0x18(%sp)
+	std %dp,-0x18(%sp)
 	std %arg0,-0x20(%sp)
 	std %arg1,-0x28(%sp)
 	std %arg2,-0x30(%sp)
 	std %arg3,-0x38(%sp)
-	std %r22, -0x40(%sp)
-	std %r21, -0x48(%sp)
-	std %r20, -0x50(%sp)
-	std %r19, -0x58(%sp)
+
+	ldw -FRAME_SIZE32 + 12(%r1),%arg0	/* ARG4 */
+	depdi   0, 31, 32, %arg0
+	std %arg0, -0x40(%sp)
+
+	ldw -FRAME_SIZE32 + 8(%r1),%arg0	/* ARG5 */
+	depdi   0, 31, 32, %arg0
+	std %arg0, -0x48(%sp)
+
+	ldw -FRAME_SIZE32 + 4(%r1),%arg0	/* ARG6 */
+	depdi   0, 31, 32, %arg0
+	std %arg0, -0x50(%sp)
+
+	ldw -FRAME_SIZE32 + 0(%r1),%arg0	/* ARG7 */
+	depdi   0, 31, 32, %arg0
+	std %arg0, -0x58(%sp)
+
 	ldo -0x58(%sp),%arg0	/* points to arg7 */
 
 	loadgp
@@ -493,20 +510,27 @@ ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
 
 2:	/* return from PDC call */
 	ldo -FRAME_SIZE(%sp),%sp
-	/* copy 64-bit-wide PDC result to 32-bit wide results */
-	ldi 32,%r1
-	ldd -0x30(%sp),%arg2
-	copy %arg2,%arg3
-3:	ldd 0(%arg2),%arg1
-	ldo 8(%arg2),%arg2
-	stw %arg1, 0(%arg3)
-	ldo 4(%arg1),%arg1
-	ldo -1(%r1),%r1
-	cmpb,>>,n %r1,%r0,3b
-
 	ldd -0x10(%sp),%rp
 	ldd -0x18(%sp),%dp
-	bv,n %r0(%rp)
+	ldd -0x30(%sp),%arg2	/* addr of result buffer */
+	ldo -2*FRAME_SIZE(%sp),%sp /* restore original 32-bit stack */
+
+	.import firmware_width_locked, data
+	load32_firmware firmware_width_locked,%r1
+	ldw 0(%r1),%r1
+	cmpb,=,n %r1,%r0,5f	/* skip copy results */
+
+	/* copy 64-bit-wide PDC result to 32-bit wide results */
+	ldi 32,%r1
+	copy %arg2,%arg3
+.L1:	ldd,ma 8(%arg2),%arg1
+	stwm %arg1, 4(%arg3)
+	ldo -1(%r1),%r1
+	cmpb,>>,n %r1,%r0,.L1
+
+5:	/* return to caller */
+	bv %r0(%rp)
+	clear_PSW_W
 
 ENTRY(pdc_entry_64_64)	/* 64-bit call on 64-bit PDC */
 	std %rp,-0x10(%sp)

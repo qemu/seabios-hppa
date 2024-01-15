@@ -140,7 +140,7 @@ unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
 unsigned int show_boot_menu;
 unsigned int interact_ipl;
 
-static int firmware_width_locked;
+int __VISIBLE firmware_width_locked;
 static unsigned long psw_defaults;
 
 unsigned long PORT_QEMU_CFG_CTL;
