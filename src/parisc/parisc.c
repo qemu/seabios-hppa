@@ -805,7 +805,7 @@ static void remove_parisc_devices(unsigned int num_cpus)
 
     /* Fix monarch CPU */
     BUG_ON(!cpu_dev);
-    cpu_dev->mod_info->mod_addr = CPU_HPA;
+    cpu_dev->mod_info->mod_addr = F_EXTEND(CPU_HPA);
     if (has_astro)
         cpu_offset = CPU_HPA - 32*0x1000;
     else
@@ -869,6 +869,14 @@ static hppa_device_t *add_index_all_devices(void)
 
     for (i = 0; i < (MAX_DEVICES-1); i++) {
         dev = parisc_devices + i;
+        if (!dev->hpa)
+            continue;
+
+        /* FIX PDC up for 64-bit PDC !!!
+         * hpa and mod_addr in device tables need upper 32 bits set
+         */
+        dev->hpa = F_EXTEND(dev->hpa);
+        dev->mod_info->mod_addr = F_EXTEND(dev->mod_info->mod_addr);
 
         dev->index = index;
         if (0)
@@ -1649,7 +1657,7 @@ static int pdc_iodc(unsigned long *arg)
     struct pdc_iodc *iodc_p;
     unsigned char *c;
 
-    // dprintf(1, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%x ARG4=%x ARG5=%x ARG6=%x\n", option, ARG3, ARG4, ARG5, ARG6);
+    // dprintf(1, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%lx ARG4=%lx ARG5=%lx ARG6=%lx\n", option, ARG3, ARG4, ARG5, ARG6);
     switch (option) {
         case PDC_IODC_READ:
             hpa = ARG3;
