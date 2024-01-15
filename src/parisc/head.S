@@ -77,6 +77,7 @@ name:
 #define ANDCM   andcm,*
 #define	COND(x)	* ## x
 #define FRAME_SIZE	128
+#define FRAME_SIZE32	64
 #define CALLEE_REG_FRAME_SIZE	144
 #define ASM_ULONG_INSN	.dword
 #define WORD_LEN 8
@@ -421,6 +422,45 @@ END(smp_ivt)
 	PDC and IODC entry
  *******************************************************/
 
+/* pdc_entry_table will be copied into low memory. */
+ENTRY(pdc_entry_table)
+#ifdef CONFIG_64BIT
+	/* see section "Testing the Current State of the PSW W-Bit",
+	   page I-2 in parisc2 spec */
+	addb,*>,n %r0,%r0,pdc_called_narrow /* branch if narrow addressing */
+
+pdc_called_wide:
+	/* we know that PDC was called with PSW.W=1 */
+	load32_firmware pdc_entry_64_64,%r1
+	bv,n %r0(%r1)
+
+pdc_called_narrow:
+	/* we know that PDC was called with PSW.W=0 */
+	load32		MEM_PDC_ENTRY + pdc_entry_64_32 - pdc_entry_table,%r1
+	bv              0(%r1)
+	set_PSW_W	/* enable PSW.W */
+#else
+ENTRY(pdc_entry_32)	/* 32-bit PDC */
+	stw %rp,-20(%sp)
+	stw %dp,-32(%sp)
+	stw %arg0,-36(%sp)
+	stw %arg1,-40(%sp)
+	stw %arg2,-44(%sp)
+	stw %arg3,-48(%sp)
+	ldo -FRAME_SIZE(%sp),%arg0
+
+	loadgp
+	b,l parisc_pdc_entry, %rp
+	ldo FRAME_SIZE(%sp),%sp
+
+	ldo -FRAME_SIZE(%sp),%sp
+	ldw -20(%sp),%rp
+	ldw -32(%sp),%dp
+	bv,n %r0(%rp)
+END(pdc_entry_32)
+#endif
+END(pdc_entry_table)
+
 #ifdef CONFIG_64BIT
 ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
 	/* clear upper bits */
@@ -432,6 +472,42 @@ ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
 	depdi   0, 31, 32, %r21
 	depdi   0, 31, 32, %r20
 	depdi   0, 31, 32, %r19
+
+	std %rp,-0x10(%sp)
+	stw %dp,-0x18(%sp)
+	std %arg0,-0x20(%sp)
+	std %arg1,-0x28(%sp)
+	std %arg2,-0x30(%sp)
+	std %arg3,-0x38(%sp)
+	std %r22, -0x40(%sp)
+	std %r21, -0x48(%sp)
+	std %r20, -0x50(%sp)
+	std %r19, -0x58(%sp)
+	ldo -0x58(%sp),%arg0	/* points to arg7 */
+
+	loadgp
+	load32_firmware parisc_pdc_entry,%r1
+	load32	MEM_PDC_ENTRY + 2f - pdc_entry_table,%rp
+	bv 0(%r1)
+	ldo FRAME_SIZE(%sp),%sp
+
+2:	/* return from PDC call */
+	ldo -FRAME_SIZE(%sp),%sp
+	/* copy 64-bit-wide PDC result to 32-bit wide results */
+	ldi 32,%r1
+	ldd -0x30(%sp),%arg2
+	copy %arg2,%arg3
+3:	ldd 0(%arg2),%arg1
+	ldo 8(%arg2),%arg2
+	stw %arg1, 0(%arg3)
+	ldo 4(%arg1),%arg1
+	ldo -1(%r1),%r1
+	cmpb,>>,n %r1,%r0,3b
+
+	ldd -0x10(%sp),%rp
+	ldd -0x18(%sp),%dp
+	bv,n %r0(%rp)
+
 ENTRY(pdc_entry_64_64)	/* 64-bit call on 64-bit PDC */
 	std %rp,-0x10(%sp)
 	stw %dp,-0x18(%sp)
@@ -454,51 +530,13 @@ ENTRY(pdc_entry_64_64)	/* 64-bit call on 64-bit PDC */
 	ldd -0x18(%sp),%dp
 	bv,n %r0(%rp)
 END(pdc_entry_64_32)
-#else
-ENTRY(pdc_entry_32)	/* 32-bit PDC */
-	stw %rp,-20(%sp)
-	stw %dp,-32(%sp)
-	stw %arg0,-36(%sp)
-	stw %arg1,-40(%sp)
-	stw %arg2,-44(%sp)
-	stw %arg3,-48(%sp)
-	ldo -FRAME_SIZE(%sp),%arg0
-
-	loadgp
-	b,l parisc_pdc_entry, %rp
-	ldo FRAME_SIZE(%sp),%sp
-
-	ldo -FRAME_SIZE(%sp),%sp
-	ldw -20(%sp),%rp
-	ldw -32(%sp),%dp
-	bv,n %r0(%rp)
-END(pdc_entry_32)
 #endif
 
-/* pdc_entry_table will be copied into low memory. */
-ENTRY(pdc_entry_table)
-#ifdef CONFIG_64BIT
-	/* see section "Testing the Current State of the PSW W-Bit",
-	   page I-2 in parisc2 spec */
-	addb,*>,n %r0,%r0,pdc_called_narrow /* branch if narrow addressing */
-	/* we know that PDC was called with PSW.W=1 */
-	load32_firmware pdc_entry_64_64,%r1
-	bv,n %r0(%r1)
-pdc_called_narrow:
-	/* we know that PDC was called with PSW.W=0 */
-	set_PSW_W	/* enable PSW.W */
-	load32_firmware pdc_entry_64_32,%r1
-	bv,n %r0(%r1)
-#else
-	load32_firmware pdc_entry_32,%r1	/* entry of 32-bit PDC */
-	bv,n %r0(%r1)
-#endif
-pdc_entry_table_end:
-	.export pdc_entry_table_end
-END(pdc_entry_table)
 
 ENTRY(iodc_entry_table)
 	load32 parisc_iodc_ENTRY_INIT,   %r1
+iodc_entry_table_one_entry:
+	.export iodc_entry_table_one_entry
 	load32 parisc_iodc_ENTRY_IO,     %r1
 	load32 parisc_iodc_ENTRY_SPA,    %r1
 	load32 parisc_iodc_ENTRY_CONFIG, %r1
@@ -507,8 +545,44 @@ ENTRY(iodc_entry_table)
 	load32 parisc_iodc_ENTRY_TLB,    %r1
 END(iodc_entry_table)
 
+/* the code for iodc_entry[] will be copied to user.
+   the first load32* wil be replaced by an entry from
+   the iodc_entry_table[] table above. */
 ENTRY(iodc_entry)
+	/* this first call we be replaced at runtime: */
 	load32 parisc_iodc_ENTRY_IO, %r1
+
+#ifdef CONFIG_64BIT
+	addb,*>,n %r0,%r0,iodc_narrow /* branch if narrow addressing */
+	nop
+#if 1
+	// HALT
+	load32_firmware hlt,%r1
+	bv,n %r0(%r1)
+#endif
+	b,n iodc_wide
+
+// ./qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux64  -append "root=/dev/sda5 console=ttyS0" -serial mon:stdio -smp cpus=1  -machine C3700  -nographic  -snapshot -fw_cfg opt/pdc_debug,string=255 -bios ../seabios-hppa/out-64/hppa-firmware64.img  -dfilter 0xf0000ae0..0xf0000b00 -d in_asm,cpu  2>&1| tee L
+// ./qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux32  -append "root=/dev/sda5 console=ttyS0" -serial mon:stdio -smp cpus=1  -machine C3700  -nographic  -snapshot -bios ../seabios-hppa/out/hppa-firmware.img # -dfilter 0x00004800..0x00004900 -d in_asm,cpu  2>&1| tee L
+
+iodc_narrow:
+	/* we run narrow, but want wide! Jump to firmware to set PSW.W=1 */
+	stw %r1,-20(%sp)	/* temporarily store r1 */
+
+	/* Switch to wide mode. */
+#if 0
+1:	mfia            %r1
+	ldo             2f-1b(%r1),%r1
+	depdi           0,31,32,%r1
+#else
+	load32		MEM_PDC_ENTRY + 2f - pdc_entry_table,%r1
+#endif
+	bv              0(%r1)
+	set_PSW_W
+2:	/* now in wide mode, running in low memory */
+	depdi   0, 31, 32, %sp
+	ldw     -20(%sp),%r1	/* restore r1 */
+	load_fw_upper32 %r1
 
 	stw %rp,-20(%sp)
 	stw %dp,-32(%sp)
@@ -516,7 +590,52 @@ ENTRY(iodc_entry)
 	stw %arg1,-40(%sp)
 	stw %arg2,-44(%sp)
 	stw %arg3,-48(%sp)
+	ldo -FRAME_SIZE32(%sp),%arg0
+	loadgp
+	load32	MEM_PDC_ENTRY +  .iodc_ret32 - pdc_entry_table,%rp
+	bv %r0(%r1)
+	ldo 2*FRAME_SIZE(%sp),%sp
+.iodc_ret32:
+	ldo -2*FRAME_SIZE(%sp),%sp
+	ldw -20(%sp),%rp
+	ldw -32(%sp),%dp
+	bv   %r0(%rp)
+	clear_PSW_W
+	/* END for 32-bit IODC call */
+
+iodc_narrow_jump_to_firmware:
+	/* clear upper bits */
+	depdi   0, 31, 32, %rp
+	depdi   0, 31, 32, %dp
+	depdi   0, 31, 32, %arg0
+	depdi   0, 31, 32, %arg1
+	depdi   0, 31, 32, %arg2
+	depdi   0, 31, 32, %arg3
+	depdi   0, 31, 32, %r22
+	depdi   0, 31, 32, %r21
+	depdi   0, 31, 32, %r20
+	depdi   0, 31, 32, %r19
+iodc_wide:
+	std %rp,-0x10(%sp)
+	std %dp,-0x18(%sp)
+	std %arg0,-0x20(%sp)
+	std %arg1,-0x28(%sp)
+	std %arg2,-0x30(%sp)
+	std %arg3,-0x38(%sp)
+	std %r22, -0x40(%sp)
+	std %r21, -0x48(%sp)
+	std %r20, -0x50(%sp)
+	std %r19, -0x58(%sp)
+	ldo -0x58(%sp),%arg0	/* points to arg7 */
+#else
+	stw %rp,-20(%sp)
+	stw %dp,-32(%sp)
+	stw %arg0,-36(%sp)
+	stw %arg1,-40(%sp)
+	stw %arg2,-44(%sp)
+	stw %arg3,-48(%sp)
 	ldo -FRAME_SIZE(%sp),%arg0
+#endif
 
 	loadgp
 	load32 .iodc_ret, %rp
@@ -524,10 +643,20 @@ ENTRY(iodc_entry)
 	ldo FRAME_SIZE(%sp),%sp
 .iodc_ret:
 	ldo -FRAME_SIZE(%sp),%sp
+#ifdef CONFIG_64BIT
+	ldd -0x10(%sp),%rp
+	ldd -0x18(%sp),%dp
+#else
 	ldw -20(%sp),%rp
 	ldw -32(%sp),%dp
-	bv,n %r0(%rp)
+#endif
+	bv   %r0(%rp)
+	clear_PSW_W
 END(iodc_entry)
+
+/* PDC is copied up until here: */
+pdc_entry_table_end:
+	.export pdc_entry_table_end
 
 /****************************************************************
  * Rom Header for VGA / STI

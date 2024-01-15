@@ -152,7 +152,8 @@ extern char pdc_entry;
 extern char pdc_entry_table;
 extern char pdc_entry_table_end;
 extern char iodc_entry[512];
-extern char iodc_entry_table[14*4];
+extern char iodc_entry_table;
+extern char iodc_entry_table_one_entry;
 
 /* args as handed over for firmware calls */
 #define ARG0 arg[7-0]
@@ -1080,7 +1081,8 @@ static char parisc_getchar(void)
 void iodc_log_call(unsigned int *arg, const char *func)
 {
     if (pdc_debug & DEBUG_IODC) {
-        printf("\nIODC %s called: hpa=0x%x (%s) option=0x%x arg2=0x%x arg3=0x%x ", func, ARG0, hpa_name(ARG0), ARG1, ARG2, ARG3);
+        printf("\nIODC %s called: hpa=0x%x (%s) option=0x%x arg2=0x%x arg3=0x%x ",
+                func, ARG0, hpa_name(ARG0), ARG1, ARG2, ARG3);
         printf("result=0x%x arg5=0x%x arg6=0x%x arg7=0x%x\n", ARG4, ARG5, ARG6, ARG7);
     }
 }
@@ -1094,7 +1096,7 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
 {
     unsigned long hpa = ARG0;
     unsigned long option = ARG1;
-    unsigned long *result = (unsigned long *)ARG4;
+    unsigned int *result = (unsigned int *)ARG4;
     hppa_device_t *dev;
     int ret, len;
     char *c;
@@ -1103,6 +1105,7 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
     dev = find_hpa_device(hpa);
     if (!dev) {
 
+printf("HPA = %lx\n", hpa);
         BUG_ON(1);
         return PDC_INVALID_ARG;
     }
@@ -1266,7 +1269,7 @@ int __VISIBLE parisc_iodc_ENTRY_TEST(unsigned int *arg FUNC_MANY_ARGS)
 {
     unsigned long hpa = ARG0;
     unsigned long option = ARG1;
-    unsigned long *result = (unsigned long *)ARG4;
+    unsigned int *result = (unsigned int *)ARG4;
     hppa_device_t *dev;
 
     iodc_log_call(arg, __FUNCTION__);
@@ -1295,7 +1298,7 @@ int __VISIBLE parisc_iodc_ENTRY_TEST(unsigned int *arg FUNC_MANY_ARGS)
 int __VISIBLE parisc_iodc_ENTRY_TLB(unsigned int *arg FUNC_MANY_ARGS)
 {
     unsigned long option = ARG1;
-    unsigned long *result = (unsigned long *)ARG4;
+    unsigned int *result = (unsigned int *)ARG4;
 
     iodc_log_call(arg, __FUNCTION__);
 
@@ -1641,7 +1644,7 @@ static int pdc_iodc(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
-    unsigned long hpa;
+    unsigned long hpa, entry_len;
     hppa_device_t *dev;
     struct pdc_iodc *iodc_p;
     unsigned char *c;
@@ -1679,9 +1682,10 @@ static int pdc_iodc(unsigned long *arg)
             memcpy((void*) ARG5, &iodc_entry, *result);
             c = (unsigned char *) &iodc_entry_table;
             /* calculate offset into jump table. */
-            c += (ARG4 - PDC_IODC_RI_INIT) * 2 * sizeof(unsigned int);
-            memcpy((void*) ARG5, c, 2 * sizeof(unsigned int));
-            // dprintf(0, "\n\nSeaBIOS: Info PDC_IODC function OK\n");
+            entry_len = &iodc_entry_table_one_entry - &iodc_entry[0];
+            c += (ARG4 - PDC_IODC_RI_INIT) * entry_len;
+            memcpy((void*) ARG5, c, entry_len);
+            printf("\n\nSeaBIOS: Info PDC_IODC function OK\n");
             flush_data_cache((char*)ARG5, *result);
             return PDC_OK;
             break;
@@ -2937,6 +2941,10 @@ unsigned long romfile_loadstring_to_int(const char *name, unsigned long defval)
     return defval;
 }
 
+extern void start_kernel(unsigned long mem_free, unsigned long cline,
+                         unsigned long rdstart,  unsigned long rdend,
+                         unsigned long kernel_start_address);
+
 void __VISIBLE start_parisc_firmware(void)
 {
     unsigned int i, cpu_hz;
@@ -3273,9 +3281,6 @@ void __VISIBLE start_parisc_firmware(void)
 
     /* directly start Linux kernel if it was given on qemu command line. */
     if (linux_kernel_entry > 1) {
-        extern void start_kernel(unsigned long mem_free, unsigned long cline,
-                                 unsigned long rdstart,  unsigned long rdend,
-                                 unsigned long kernel_start_address);
         unsigned long kernel_entry = linux_kernel_entry;
 
         printf("Autobooting Linux kernel which was loaded by qemu...\n\n");
@@ -3288,16 +3293,14 @@ void __VISIBLE start_parisc_firmware(void)
 
     /* check for bootable drives, and load and start IPL bootloader if possible */
     if (parisc_boot_menu(&iplstart, &iplend, bootdrive)) {
-        void (*start_ipl)(long interactive, long iplend);
-
         PAGE0->mem_boot.dp.layers[0] = boot_drive->target;
         PAGE0->mem_boot.dp.layers[1] = boot_drive->lun;
 
         printf("\nBooting...\n"
                 "Boot IO Dependent Code (IODC) revision 153\n\n"
                 "%s Booted.\n", PAGE0->imm_soft_boot ? "SOFT":"HARD");
-        start_ipl = (void *) iplstart;
-        start_ipl(interact_ipl, iplend);
+        /* actually: start_ipl(interact_ipl, iplend); */
+        start_kernel(interact_ipl, iplend, 0, 0, iplstart);
     }
 
     hlt(); /* this ends the emulator */
