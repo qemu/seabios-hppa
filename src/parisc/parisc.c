@@ -59,7 +59,11 @@ union {
 char cpu_bit_width;
 # define is_64bit_PDC()     0      /* 32-bit PDC */
 #endif
-# define is_64bit_CPU()     (cpu_bit_width == 64)  /* 64-bit CPU? */
+
+#define is_64bit_CPU()     (cpu_bit_width == 64)  /* 64-bit CPU? */
+
+/* running 64-bit PDC, but called from 32-bit app */
+#define is_compat_mode()  (is_64bit_PDC() && ((psw_defaults & PDC_PSW_WIDE_BIT) == 0))
 
 u8 BiosChecksum;
 
@@ -1600,7 +1604,7 @@ static int pdc_cache(unsigned long *arg)
 #endif
 
             memcpy(result, machine_cache_info, sizeof(*machine_cache_info));
-            if (is_64bit_PDC() && !(psw_defaults & PDC_PSW_WIDE_BIT)) {
+            if (is_compat_mode()){
                 unsigned int *res2 = (unsigned int *)result;
                 int i;
                 // 32-bit kernel but 64-bit machine
@@ -1670,7 +1674,10 @@ static int pdc_iodc(unsigned long *arg)
     // dprintf(1, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%lx ARG4=%lx ARG5=%lx ARG6=%lx\n", option, ARG3, ARG4, ARG5, ARG6);
     switch (option) {
         case PDC_IODC_READ:
-            hpa = ARG3;
+            if (is_compat_mode())
+                hpa = (long)(int)ARG3;
+            else
+                hpa = ARG3;
             // dev = find_hpa_device(hpa);
             // searches for 0xf1041000
             dev = find_hppa_device_by_hpa(hpa);
@@ -1985,8 +1992,7 @@ static int pdc_system_map(unsigned long *arg)
             result[0] = dev->mod_info->mod_addr; //  for PDC_IODC
             result[1] = dev->mod_info->mod_pgs;
             result[2] = dev->num_addr;           //  dev->mod_info->add_addr;
-            if (0)
-                dprintf(1, "PDC_FIND_MODULE %lx %ld %ld \n", result[0], result[1],result[2]);
+            dprintf(1, "PDC_FIND_MODULE %lx %ld %ld \n", result[0], result[1],result[2]);
 
             return PDC_OK;
 
