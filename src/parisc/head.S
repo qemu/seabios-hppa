@@ -446,6 +446,13 @@ ENTRY(pdc_entry_table)
 	addb,*>,n %r0,%r0,pdc_called_narrow /* branch if narrow addressing */
 
 pdc_called_wide:
+#if 0	/* automatically set wide-bit */
+	.import psw_defaults, data
+	load32_firmware psw_defaults,%r1	/* set PDC_PSW_ENDIAN_BIT in psw_defaults */
+	ldi PDC_PSW_ENDIAN_BIT,%r31
+	stw %r31,0(%r1)
+#endif
+
 	/* we know that PDC was called with PSW.W=1 */
 	load32_firmware pdc_entry_64_64,%r1
 	bv,n %r0(%r1)
@@ -546,11 +553,12 @@ c64_32_return:
 	cmpb,=,n %r1,%r0,5f	/* skip copy results */
 #endif
 
+	cmpib,>=,n 15,%arg2,5f /* skip copy results if target buffer in PAGE0 */
+
 	/* copy 64-bit-wide PDC result to 32-bit wide results */
 	/* TODO?: skip copy results if return value was < 0 */
 	ldi 32,%r1
 	copy %arg2,%arg3
-	cmpib,>=,n 15,%arg2,5f /* skip copy results if target buffer in PAGE0 */
 .L1:	ldd,ma 8(%arg2),%arg1
 	stwm %arg1, 4(%arg3)
 	ldo -1(%r1),%r1

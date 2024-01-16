@@ -65,6 +65,8 @@ char cpu_bit_width;
 /* running 64-bit PDC, but called from 32-bit app */
 #define is_compat_mode()  (is_64bit_PDC() && ((psw_defaults & PDC_PSW_WIDE_BIT) == 0))
 
+#define COMPAT_VAL(val)   ((long)(int)(val))    // (is_compat_mode() ? (long)(int)(val) : (val))
+
 u8 BiosChecksum;
 
 char zonefseg_start, zonefseg_end;  // SYMBOLS
@@ -175,7 +177,7 @@ extern char iodc_entry_table_one_entry;
 
 #define MIN_RAM_SIZE	(16*1024*1024) // 16 MB
 
-#define CPU_HPA_IDX(i)  (CPU_HPA + (i)*0x1000) /* CPU_HPA of CPU#i */
+#define CPU_HPA_IDX(i)  (F_EXTEND(CPU_HPA) + (i)*0x1000) /* CPU_HPA of CPU#i */
 
 static int index_of_CPU_HPA(unsigned long hpa) {
     int i;
@@ -652,11 +654,11 @@ static void hppa_pci_build_devices_list(void)
         offs = elroy_offset(pci->bdf);
         BUG_ON(offs == -1UL);
 #if 0
-        pfa = (unsigned long) elroy_port(0, offs);
+        pfa = F_EXTEND(elroy_port(0, offs));
         pfa += pci->bdf << 8;
         pfa |= SCSI_HPA;
 #else
-        pfa = pci_get_first_mmio_or_io(pci);
+        pfa = F_EXTEND(pci_get_first_mmio_or_io(pci));
         BUG_ON(!pfa);
 #endif
 #if 0
@@ -679,7 +681,7 @@ static void hppa_pci_build_devices_list(void)
         pdev->mod_path  = &hppa_pci_mod_path[curr_pci_devices];
         pdev->num_addr  = 0;
         pdev->pci = pci;
-        pdev->hpa_parent = pci_hpa;
+        pdev->hpa_parent = F_EXTEND(pci_hpa);
         pdev->index     = curr_pci_devices;
         dprintf(1, "PCI device #%d %pP bdf 0x%x at pfa 0x%lx\n", curr_pci_devices, pci, pci->bdf, pfa);
 
@@ -695,6 +697,8 @@ static void hppa_pci_build_devices_list(void)
 static hppa_device_t *find_hpa_device(unsigned long hpa)
 {
     int i;
+
+    hpa = COMPAT_VAL(hpa);
 
     /* search classical HPPA devices */
     if (hpa) {
@@ -1107,7 +1111,7 @@ void iodc_log_call(unsigned int *arg, const char *func)
 
 int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
 {
-    unsigned long hpa = ARG0;
+    unsigned long hpa = COMPAT_VAL(ARG0);
     unsigned long option = ARG1;
     unsigned int *result = (unsigned int *)ARG4;
     hppa_device_t *dev;
@@ -1116,9 +1120,9 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
     struct disk_op_s disk_op;
 
     dev = find_hpa_device(hpa);
+printf("HPA = %lx  dev %p\n", hpa, dev);
     if (!dev) {
 
-printf("HPA = %lx\n", hpa);
         BUG_ON(1);
         return PDC_INVALID_ARG;
     }
@@ -1223,7 +1227,7 @@ printf("HPA = %lx\n", hpa);
 
 int __VISIBLE parisc_iodc_ENTRY_INIT(unsigned int *arg FUNC_MANY_ARGS)
 {
-    unsigned long hpa = ARG0;
+    unsigned long hpa = COMPAT_VAL(ARG0);
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG4;
     hppa_device_t *dev;
@@ -1280,7 +1284,7 @@ int __VISIBLE parisc_iodc_ENTRY_CONFIG(unsigned int *arg FUNC_MANY_ARGS)
 
 int __VISIBLE parisc_iodc_ENTRY_TEST(unsigned int *arg FUNC_MANY_ARGS)
 {
-    unsigned long hpa = ARG0;
+    unsigned long hpa = COMPAT_VAL(ARG0);
     unsigned long option = ARG1;
     unsigned int *result = (unsigned int *)ARG4;
     hppa_device_t *dev;
@@ -1411,7 +1415,10 @@ static int pdc_chassis(unsigned long *arg)
     switch (option) {
         case PDC_CHASSIS_DISP:
             ARG3 = ARG2;
+            /* WARNING: Avoid copyig the 64-bit result array to ARG2 */
+            ARG2 = 0;   /* do not write back in compat mode */
             result = (unsigned long *)&ARG4; // do not write to ARG2, use &ARG4 instead
+    printf("\nPDC_CHASSIS: %p ARG3 = %lx\n", result, ARG3);
             // fall through
         case PDC_CHASSIS_DISPWARN:
             ARG4 = (ARG3 >> 17) & 7;
@@ -1624,6 +1631,7 @@ static int pdc_hpa(unsigned long *arg)
     switch (option) {
         case PDC_HPA_PROCESSOR:
             hpa = mfctl(CPU_HPA_CR_REG); /* get CPU HPA from cr7 */
+printf("HPA = %lx\n", hpa);
             i = index_of_CPU_HPA(hpa);
             BUG_ON(i < 0 || i >= smp_cpus); /* ARGH, someone modified cr7! */
             result[0] = hpa;    /* CPU_HPA */
@@ -1666,14 +1674,11 @@ static int pdc_iodc(unsigned long *arg)
     // dprintf(1, "\n\nSeaBIOS: Info PDC_IODC function %ld ARG3=%lx ARG4=%lx ARG5=%lx ARG6=%lx\n", option, ARG3, ARG4, ARG5, ARG6);
     switch (option) {
         case PDC_IODC_READ:
-            if (is_compat_mode())
-                hpa = (long)(int)ARG3;
-            else
-                hpa = ARG3;
+            hpa = COMPAT_VAL(ARG3);
             // dev = find_hpa_device(hpa);
             // searches for 0xf1041000
             dev = find_hppa_device_by_hpa(hpa);
-            // dprintf(1, "pdc_iodc found dev %p\n", dev);
+            printf("pdc_iodc found dev %p\n", dev);
             if (!dev)
                 return -4; // not found
 
@@ -2232,7 +2237,7 @@ static int pdc_pat_cpu(unsigned long *arg)
 
     switch (option) {
         case PDC_PAT_CPU_GET_NUMBER:
-            hpa = ARG3;
+            hpa = COMPAT_VAL(ARG3);
             result[0] = index_of_CPU_HPA(hpa);
             result[1] = hpa;    /* location */
             result[2] = 0;      /* num siblings */
@@ -2305,8 +2310,9 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg FUNC_MANY_ARGS)
     unsigned long option = ARG1;
 
     if (pdc_debug & DEBUG_PDC) {
-        printf("\nSeaBIOS: Start PDC proc %s(%ld) option %ld result=0x%lx ARG3=0x%lx %s ",
-                pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3, (proc == PDC_IODC)?hpa_name(ARG3):"");
+        printf("\nSeaBIOS: Start PDC%d proc %s(%ld) option %ld result=0x%lx ARG3=0x%lx %s ",
+                is_compat_mode() ? 32 : 64, pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3,
+                (proc == PDC_IODC)?hpa_name(ARG3):"");
         printf("ARG4=0x%lx ARG5=0x%lx ARG6=0x%lx ARG7=0x%lx\n", ARG4, ARG5, ARG6, ARG7);
     }
 
