@@ -6,8 +6,16 @@
 
 #include "parisc/hppa.h"
 #include "parisc/hppa_hardware.h"
+#include "parisc/pdc.h"
 #include "autoconf.h"
 #include "autoversion.h"
+
+	/* load 32-bit 'value' into 'reg' with
+	   sign-extension when running in wide mode. */
+	.macro	load32_sign_extend value, reg
+	ldil	L%\value, \reg
+	ldo	R%\value(\reg), \reg
+	.endm
 
 	/* load 32-bit 'value' into 'reg' compensating for the ldil
 	 * sign-extension when running in wide mode. */
@@ -191,7 +199,7 @@ $startup_just_rebooted:
 	mfctl   CPU_HPA_CR_REG, %r5
 
 	/* branch if this is the monarch cpu */
-	load32 CPU_HPA, %r1
+	load32_sign_extend CPU_HPA, %r1
 	comb,=,n %r5,%r1,$is_monarch_cpu_reboot
 
 	b,n	enter_smp_idle_loop
@@ -200,10 +208,13 @@ $startup_fresh_booted:
 	/* Here the machine was booted from scratch: */
 
 	/* Save CPU HPA in cr7, hopefully HP-UX will not use that register. */
+#ifdef CONFIG_64BIT
+	extrw,s,>= %r5,31,32,%r5	/* sign extend CPU HPA */
+#endif
 	mtctl   %r5, CPU_HPA_CR_REG /* store CPU HPA */
 
 	/* branch if this is the monarch cpu */
-	load32 CPU_HPA,%r1
+	load32_sign_extend CPU_HPA,%r1
 	comb,= %r5,%r1,$is_monarch_cpu
 	nop
 
@@ -243,7 +254,12 @@ $smp_exit_loop:
 
 	/* jump to rendevouz */
 	ldw	0x10(%r0),%r3	/* MEM_RENDEZ */
-	/* ldw	0x28(%r0),%r0	MEM_RENDEZ_HI - assume addr < 4GB */
+#ifdef CONFIG_64BIT
+	addb,*>,n %r0,%r0,1f	/* branch if narrow addressing */
+	ldw	0x28(%r0),%r1	/* MEM_RENDEZ_HI */
+	depd    %r1, 31, 32, %r3
+1:
+#endif
 	cmpb,=,n  %r0,%r3,enter_smp_idle_loop
 	nop			/* failed backward branch is nullified */
 	load32_firmware	startup, %rp
@@ -504,25 +520,37 @@ ENTRY(pdc_entry_64_32)	/* 32-bit call on 64-bit PDC */
 
 	loadgp
 	load32_firmware parisc_pdc_entry,%r1
-	load32	MEM_PDC_ENTRY + 2f - pdc_entry_table,%rp
+	load32	MEM_PDC_ENTRY + c64_32_return - pdc_entry_table,%rp
 	bv 0(%r1)
 	ldo FRAME_SIZE(%sp),%sp
 
-2:	/* return from PDC call */
+c64_32_return:
+	/* return from PDC call */
 	ldo -FRAME_SIZE(%sp),%sp
 	ldd -0x10(%sp),%rp
 	ldd -0x18(%sp),%dp
 	ldd -0x30(%sp),%arg2	/* addr of result buffer */
 	ldo -2*FRAME_SIZE(%sp),%sp /* restore original 32-bit stack */
 
+#if 0
+	.import psw_defaults, data
+	load32_firmware psw_defaults,%r1	/* test PDC_PSW_ENDIAN_BIT in psw_defaults */
+	ldw 0(%r1),%r1
+	ldi PDC_PSW_ENDIAN_BIT,%arg3
+	and %r1,%arg3,%r1
+	cmpb,<>,n %r1,%r0,5f	/* skip copy results */
+#elif 0
 	.import firmware_width_locked, data
 	load32_firmware firmware_width_locked,%r1
 	ldw 0(%r1),%r1
 	cmpb,=,n %r1,%r0,5f	/* skip copy results */
+#endif
 
 	/* copy 64-bit-wide PDC result to 32-bit wide results */
+	/* TODO?: skip copy results if return value was < 0 */
 	ldi 32,%r1
 	copy %arg2,%arg3
+	cmpib,>=,n 15,%arg2,5f /* skip copy results if target buffer in PAGE0 */
 .L1:	ldd,ma 8(%arg2),%arg1
 	stwm %arg1, 4(%arg3)
 	ldo -1(%r1),%r1

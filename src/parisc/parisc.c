@@ -145,8 +145,8 @@ unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
 unsigned int show_boot_menu;
 unsigned int interact_ipl;
 
-int __VISIBLE firmware_width_locked;
-static unsigned long psw_defaults;
+unsigned int __VISIBLE firmware_width_locked; /* no 64-bit calls allowed */
+unsigned int __VISIBLE psw_defaults;
 
 unsigned long PORT_QEMU_CFG_CTL;
 unsigned int tlb_entries = 256;
@@ -1534,7 +1534,8 @@ static int pdc_model(unsigned long *arg)
                 result[0] = machine_B160L.pdc_cpuid;
             return PDC_OK;
         case PDC_MODEL_CAPABILITIES:
-            firmware_width_locked = 0;  /* pdc unlock call */
+            /* unlock pdc call if running wide. */
+            firmware_width_locked = !(psw_defaults & PDC_PSW_WIDE_BIT);
             result[0] = current_machine->pdc_caps;
             result[0] |= PDC_MODEL_OS32; /* we only support 32-bit PDC for now. */
             if (is_64bit_PDC()) /* and maybe 64-bit */
@@ -1602,16 +1603,7 @@ static int pdc_cache(unsigned long *arg)
             machine_cache_info->dc_base = 0;
             machine_cache_info->dc_stride = 0;
 #endif
-
             memcpy(result, machine_cache_info, sizeof(*machine_cache_info));
-            if (is_compat_mode()){
-                unsigned int *res2 = (unsigned int *)result;
-                int i;
-                // 32-bit kernel but 64-bit machine
-                for (i = 0; i < 32; i++)
-                    res2[i] = result[i];
-            }
-
             return PDC_OK;
         case PDC_CACHE_RET_SPID:	/* returns space-ID bits when sr-hasing is enabled */
             memset(result, 0, 32 * sizeof(unsigned long));
