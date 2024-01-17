@@ -249,6 +249,10 @@ $smp_exit_loop:
 	rsm	PSW_I, %r0	/* disable local irqs */
 	mtctl	%r0, CR_EIEM
 
+	/* Load IVT to detect and report crashes */
+	load32_firmware	BOOTADDR(firmware_default_ivt),%r1
+	mtctl	%r1, CR_IVA
+
 	/* provide PDCE_PROC entry in arg0 (required on 64-bit) */
 	load32	MEM_PDC_ENTRY, %arg0
 
@@ -294,6 +298,10 @@ $is_monarch_cpu_reboot:
 $bss_loop:
 	cmpb,<<,n %r3,%r4,$bss_loop
 	STREGM	%r0,WORD_LEN(%r3)
+
+	/* Load IVT to detect and report crashes */
+	load32_firmware	BOOTADDR(firmware_default_ivt),%r1
+	mtctl	%r1, CR_IVA
 
 	load32_firmware	BOOTADDR(start_parisc_firmware),%r3
 	bv	0(%r3)
@@ -433,6 +441,20 @@ ENTRY(smp_ivt)
 	.endr
 END(smp_ivt)
 
+	.align 32
+ENTRY(firmware_default_ivt)	/* to detect crashes */
+	.set loop,0
+	.import firmware_fault_handler,code
+	.rept 32
+	.align 32
+	load32_firmware firmware_fault_handler,%arg0
+	loadgp
+	bv	0(%arg0)
+	ldi  loop,%arg0
+	.set loop,loop+1
+	.endr
+END(smp_ivt)
+
 
 /*******************************************************
 	PDC and IODC entry
@@ -475,6 +497,7 @@ ENTRY(pdc_entry_32)	/* 32-bit PDC */
 	loadgp
 	load32		MEM_PDC_ENTRY + 1f - pdc_entry_table,%rp
 	load32 parisc_pdc_entry, %r1
+	clear_PSW_W
 	bv              0(%r1)
 	ldo FRAME_SIZE(%sp),%sp
 1:
@@ -553,10 +576,15 @@ c64_32_return:
 	cmpb,=,n %r1,%r0,5f	/* skip copy results */
 #endif
 
-	cmpib,>=,n 15,%arg2,5f /* skip copy results if target buffer in PAGE0 */
+	cmpb,=,n %r0,%arg2,5f   /* skip copy results if target buffer is NULL */
+	cmpb,<   %ret0,%r0,5f	/* skip copy results if return value was negative (=error) */
+	ldi MEM_PDC_ENTRY,%r1
+	cmpb,>=,n %arg2,%r1,convert_ret64_buffer  /* copy results if target buffer >= MEM_PDC_ENTRY */
+	b,n .
+	.word 0xfffdead0	/* immediately halt the emulator */
 
+convert_ret64_buffer:
 	/* copy 64-bit-wide PDC result to 32-bit wide results */
-	/* TODO?: skip copy results if return value was < 0 */
 	ldi 32,%r1
 	copy %arg2,%arg3
 .L1:	ldd,ma 8(%arg2),%arg1

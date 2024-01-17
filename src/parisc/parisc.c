@@ -67,6 +67,9 @@ char cpu_bit_width;
 
 #define COMPAT_VAL(val)   ((long)(int)(val))    // (is_compat_mode() ? (long)(int)(val) : (val))
 
+/* Do not write back result buffer in compat mode */
+#define NO_COMPAT_RETURN_VALUE(res)     { res = 0; }
+
 u8 BiosChecksum;
 
 char zonefseg_start, zonefseg_end;  // SYMBOLS
@@ -242,6 +245,14 @@ void __VISIBLE __noreturn reset(void)
     /* call qemu artificial "reset" asm instruction */
     asm volatile("\t.word 0xfffdead1": : :"memory");
     while (1);
+}
+
+void __VISIBLE __noreturn firmware_fault_handler(unsigned long fault)
+{
+    printf("\n***************************\n"
+        "SeaBIOS: Detected trap #%lu, at 0x%lx:0x%lx, IIR=0x%lx, IOR addr=0x%lx:0x%lx\n", fault,
+        mfctl(17), mfctl(18), mfctl(19), mfctl(20), mfctl(21));
+    while (1) { asm("or %r10,%r10,%r10"); };
 }
 
 #undef BUG_ON
@@ -1120,7 +1131,6 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg FUNC_MANY_ARGS)
     struct disk_op_s disk_op;
 
     dev = find_hpa_device(hpa);
-printf("HPA = %lx  dev %p\n", hpa, dev);
     if (!dev) {
 
         BUG_ON(1);
@@ -1416,9 +1426,8 @@ static int pdc_chassis(unsigned long *arg)
         case PDC_CHASSIS_DISP:
             ARG3 = ARG2;
             /* WARNING: Avoid copyig the 64-bit result array to ARG2 */
-            ARG2 = 0;   /* do not write back in compat mode */
+            NO_COMPAT_RETURN_VALUE(ARG2);
             result = (unsigned long *)&ARG4; // do not write to ARG2, use &ARG4 instead
-    printf("\nPDC_CHASSIS: %p ARG3 = %lx\n", result, ARG3);
             // fall through
         case PDC_CHASSIS_DISPWARN:
             ARG4 = (ARG3 >> 17) & 7;
@@ -1631,7 +1640,6 @@ static int pdc_hpa(unsigned long *arg)
     switch (option) {
         case PDC_HPA_PROCESSOR:
             hpa = mfctl(CPU_HPA_CR_REG); /* get CPU HPA from cr7 */
-printf("HPA = %lx\n", hpa);
             i = index_of_CPU_HPA(hpa);
             BUG_ON(i < 0 || i >= smp_cpus); /* ARGH, someone modified cr7! */
             result[0] = hpa;    /* CPU_HPA */
@@ -1678,7 +1686,7 @@ static int pdc_iodc(unsigned long *arg)
             // dev = find_hpa_device(hpa);
             // searches for 0xf1041000
             dev = find_hppa_device_by_hpa(hpa);
-            printf("pdc_iodc found dev %p\n", dev);
+            // printf("pdc_iodc found dev %p\n", dev);
             if (!dev)
                 return -4; // not found
 
@@ -1704,10 +1712,10 @@ static int pdc_iodc(unsigned long *arg)
             memcpy((void*) ARG5, &iodc_entry, *result);
             c = (unsigned char *) &iodc_entry_table;
             /* calculate offset into jump table. */
-            entry_len = &iodc_entry_table_one_entry - &iodc_entry[0];
+            entry_len = &iodc_entry_table_one_entry - &iodc_entry_table;
             c += (ARG4 - PDC_IODC_RI_INIT) * entry_len;
             memcpy((void*) ARG5, c, entry_len);
-            printf("\n\nSeaBIOS: Info PDC_IODC function OK\n");
+            // printf("\n\nSeaBIOS: Info PDC_IODC function OK\n");
             flush_data_cache((char*)ARG5, *result);
             return PDC_OK;
             break;
@@ -1765,19 +1773,23 @@ static int pdc_stable(unsigned long *arg)
             if ((ARG2 + ARG4) > STABLE_STORAGE_SIZE)
                 return PDC_INVALID_ARG;
             memcpy((unsigned char *) ARG3, &stable_storage[ARG2], ARG4);
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
         case PDC_STABLE_WRITE:
             if ((ARG2 + ARG4) > STABLE_STORAGE_SIZE)
                 return PDC_INVALID_ARG;
             memcpy(&stable_storage[ARG2], (unsigned char *) ARG3, ARG4);
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
         case PDC_STABLE_RETURN_SIZE:
             result[0] = STABLE_STORAGE_SIZE;
             return PDC_OK;
         case PDC_STABLE_VERIFY_CONTENTS:
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
         case PDC_STABLE_INITIALIZE:
             init_stable_storage();
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
     }
     return PDC_BAD_OPTION;
@@ -1793,19 +1805,23 @@ static int pdc_nvolatile(unsigned long *arg)
             if ((ARG2 + ARG4) > NVOLATILE_STORAGE_SIZE)
                 return PDC_INVALID_ARG;
             memcpy((unsigned char *) ARG3, &nvolatile_storage[ARG2], ARG4);
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
         case PDC_NVOLATILE_WRITE:
             if ((ARG2 + ARG4) > NVOLATILE_STORAGE_SIZE)
                 return PDC_INVALID_ARG;
             memcpy(&nvolatile_storage[ARG2], (unsigned char *) ARG3, ARG4);
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
         case PDC_NVOLATILE_RETURN_SIZE:
             result[0] = NVOLATILE_STORAGE_SIZE;
             return PDC_OK;
         case PDC_NVOLATILE_VERIFY_CONTENTS:
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
         case PDC_NVOLATILE_INITIALIZE:
             memset(nvolatile_storage, 0, sizeof(nvolatile_storage));
+            NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
     }
     return PDC_BAD_OPTION;
@@ -1814,23 +1830,25 @@ static int pdc_nvolatile(unsigned long *arg)
 static int pdc_add_valid(unsigned long *arg)
 {
     unsigned long option = ARG1;
+    unsigned long arg2 = is_compat_mode() ? COMPAT_VAL(ARG2) : ARG2;
 
-    // dprintf(0, "\n\nSeaBIOS: PDC_ADD_VALID function %ld ARG2=%x called.\n", option, ARG2);
+    NO_COMPAT_RETURN_VALUE(ARG2);
+    // dprintf(0, "\n\nSeaBIOS: PDC_ADD_VALID function %ld arg2=%x called.\n", option, arg2);
     if (option != 0)
         return PDC_BAD_OPTION;
-    if (0 && ARG2 == 0) // should PAGE0 be valid?  HP-UX asks for it, but maybe due a bug in our code...
+    if (0 && arg2 == 0) // should PAGE0 be valid?  HP-UX asks for it, but maybe due a bug in our code...
         return 1;
-    // if (ARG2 < PAGE_SIZE) return PDC_ERROR;
-    if (ARG2 < ram_size)
+    // if (arg2 < PAGE_SIZE) return PDC_ERROR;
+    if (arg2 < ram_size)
         return PDC_OK;
-    if (ARG2 >= (unsigned long)_sti_rom_start &&
-        ARG2 <= (unsigned long)_sti_rom_end)
+    if (arg2 >= (unsigned long)_sti_rom_start &&
+        arg2 <= (unsigned long)_sti_rom_end)
         return PDC_OK;
-    if (ARG2 < FIRMWARE_END)
+    if (arg2 < FIRMWARE_END)
         return 1;
-    if (ARG2 <= 0xffffffff)
+    if (arg2 <= 0xffffffff)
         return PDC_OK;
-    dprintf(0, "\n\nSeaBIOS: FAILED!!!! PDC_ADD_VALID function %ld ARG2=%lx called.\n", option, ARG2);
+    dprintf(0, "\n\nSeaBIOS: FAILED!!!! PDC_ADD_VALID function %ld arg2=%lx called.\n", option, arg2);
     return PDC_REQ_ERR_0; /* Operation completed with a requestor bus error. */
 }
 
@@ -1951,6 +1969,7 @@ static int pdc_psw(unsigned long *arg)
         mtctl(psw_defaults, CR_PSW_DEFAULT);
         /* let model know that we support 64-bit */
         current_machine->pdc_model.width = (psw_defaults & PDC_PSW_WIDE_BIT) ? 1 : 0;
+        NO_COMPAT_RETURN_VALUE(ARG2);
     }
     return PDC_OK;
 }
@@ -1989,7 +2008,8 @@ static int pdc_system_map(unsigned long *arg)
             result[0] = dev->mod_info->mod_addr; //  for PDC_IODC
             result[1] = dev->mod_info->mod_pgs;
             result[2] = dev->num_addr;           //  dev->mod_info->add_addr;
-            dprintf(1, "PDC_FIND_MODULE %lx %ld %ld \n", result[0], result[1],result[2]);
+            if (0)
+                dprintf(1, "PDC_FIND_MODULE %lx %ld %ld \n", result[0], result[1],result[2]);
 
             return PDC_OK;
 
@@ -2311,7 +2331,7 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg FUNC_MANY_ARGS)
 
     if (pdc_debug & DEBUG_PDC) {
         printf("\nSeaBIOS: Start PDC%d proc %s(%ld) option %ld result=0x%lx ARG3=0x%lx %s ",
-                is_compat_mode() ? 32 : 64, pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3,
+                (!is_64bit_PDC() || is_compat_mode()) ? 32 : 64, pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3,
                 (proc == PDC_IODC)?hpa_name(ARG3):"");
         printf("ARG4=0x%lx ARG5=0x%lx ARG6=0x%lx ARG7=0x%lx\n", ARG4, ARG5, ARG6, ARG7);
     }
@@ -2996,10 +3016,11 @@ void __VISIBLE start_parisc_firmware(void)
     firmware_width_locked = 1;
 
     psw_defaults = PDC_PSW_ENDIAN_BIT;
-    if (is_64bit_CPU() && 0) {
+    if (0 && is_64bit_PDC()) {
         /* enable 64-bit PSW by default */
         psw_defaults |= PDC_PSW_WIDE_BIT;
         current_machine->pdc_model.width = 1;
+        firmware_width_locked = 0;
     }
     mtctl(psw_defaults, CR_PSW_DEFAULT);
 
