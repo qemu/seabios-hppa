@@ -112,8 +112,9 @@ endif
 
 # Install parisc firmware into qemu pc-bios directory
 parisc-qemu-install: parisc
-	hppa-linux-gnu-objcopy   -S out/hppa-firmware.img       ../../pc-bios/hppa-firmware.img
-	hppa64-linux-gnu-objcopy -S out-64/hppa-firmware64.img  ../../pc-bios/hppa-firmware64.img
+	cp			    out/artist-pci.rom		../../pc-bios/
+	hppa-linux-gnu-objcopy   -S out/hppa-firmware.img       ../../pc-bios/
+	hppa64-linux-gnu-objcopy -S out-64/hppa-firmware64.img  ../../pc-bios/
 
 # Make definitions
 .PHONY : all clean distclean parisc FORCE
