@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "pcidevice.h": "c",
+        "pci_ids.h": "c"
+    }
+}
