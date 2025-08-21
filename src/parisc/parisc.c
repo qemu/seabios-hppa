@@ -369,6 +369,7 @@ static hppa_device_t *parisc_devices = machine_B160L.device_list;
     /* DINO_SCSI_HPA, */ \
     LASI_UART_HPA, \
     LASI_LAN_HPA, \
+    LASI_SCSI_HPA, \
     LASI_LPT_HPA, \
     LASI_GFX_HPA,\
     LASI_PS2KBD_HPA, \
@@ -2976,7 +2977,7 @@ static struct pz_device mem_kbd_boot = {
 
 static struct pz_device mem_boot_boot = {
     .dp.path.flags = PF_AUTOBOOT,
-    .hpa = DINO_SCSI_HPA,  // will be overwritten
+    .hpa = LASI_SCSI_HPA,  // may be overwritten. Default to LASI SCSI
     .cl_class = CL_RANDOM,
 };
 

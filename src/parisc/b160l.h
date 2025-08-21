@@ -183,7 +183,7 @@ static struct pdc_iodc iodc_data_hpa_ffd05000 = {
 
 #define HPA_ffd06000_DESCRIPTION "Merlin 160 Core SCSI"
 static struct pdc_system_map_mod_info mod_info_hpa_ffd06000 = {
-	.mod_addr = 0xffd06000,
+	.mod_addr = LASI_SCSI_HPA,
 	.mod_pgs = 0x1,
 	.add_addrs = 0x0,
 };
@@ -554,7 +554,7 @@ static struct pdc_iodc iodc_data_hpa_fff81000 = {
 		.mod_path = &mod_path_hpa_ffd05000,\
 		.num_addr = HPA_ffd05000_num_addr,\
 		.add_addr = { HPA_ffd05000_add_addr } },\
-	{	.hpa = 0xffd06000,\
+	{	.hpa = LASI_SCSI_HPA,\
 		.iodc = &iodc_data_hpa_ffd06000,\
 		.mod_info = &mod_info_hpa_ffd06000,\
 		.mod_path = &mod_path_hpa_ffd06000,\

@@ -259,13 +259,13 @@ ncr710_scsi_process_op(struct disk_op_s *op)
     // Step 6: Disconnect
     outb(0, iobase + NCR_REG_SCNTL0);  // Clear all control bits
 
-    dprintf(5, "NCR710: Command complete, status=0x%02x, msg=0x%02x\n", status, msg);
+    printf("NCR710: Command complete, status=0x%02x, msg=0x%02x\n", status, msg);
 
     if (status == 0) {
         return DISK_RET_SUCCESS;
     }
 
-    dprintf(1, "NCR710: Command failed with status 0x%02x\n", status);
+    printf("NCR710: Command failed with status 0x%02x\n", status);
     return DISK_RET_EBADTRACK;
 }
 
@@ -366,7 +366,7 @@ init_ncr710_scsi(u32 iobase)
         return;
     }
 
-    dprintf(1, "Found NCR53c710 SCSI controller at address 0x%x\n", iobase);
+    printf("Found NCR53c710 SCSI controller at address 0x%x\n", iobase);
 
     // Configure controller for operation
     outb(0x00, iobase + NCR_REG_SXFER);   // Async transfers initially
@@ -376,7 +376,7 @@ init_ncr710_scsi(u32 iobase)
     // Scan for attached devices (targets 0-6, skip 7 which is our ID)
     int i;
     for (i = 0; i < 7; i++) {
-        dprintf(3, "NCR710: Scanning target %d\n", i);
+        printf("NCR710: Scanning target %d\n", i);
         ncr710_scsi_scan_target(iobase, i);
     }
 }
@@ -394,6 +394,6 @@ ncr710_scsi_setup(void)
     // Initialize the LASI SCSI controller (NCR 53c710)
     init_ncr710_scsi(LASI_SCSI_HPA);
 
-    // DINO SCSI is also NCR 53c710
+    // SCSI on DINO chip is a NCR 53c720
     init_ncr710_scsi(DINO_SCSI_HPA);
 }

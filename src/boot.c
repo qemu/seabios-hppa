@@ -539,7 +539,7 @@ bootentry_add(int type, int prio, void *data, const char *desc)
     be->priority = prio;
     be->data = data;
     be->description = desc ?: "?";
-    dprintf(3, "Registering bootable: %s (type:%d prio:%d data:%p)\n"
+    printf("Registering bootable: %s (type:%d prio:%d data:%p)\n"
             , be->description, type, prio, data);
 
     // Add entry in sorted order.
