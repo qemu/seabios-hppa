@@ -17,31 +17,37 @@
 #include "string.h" // memset
 #include "util.h" // usleep
 
+//Unused registers - might delete later;
 #define NCR_REG_SCNTL0    0x00
 #define NCR_REG_SCNTL1    0x01
+#define NCR_REG_DSA       0x10
+#define NCR_REG_DBC       0x24
+#define NCR_REG_DCMD      0x27
+#define NCR_REG_DNAD      0x28
+#define NCR_REG_DSPS      0x30
+#define NCR_REG_SCRATCH   0x34
+#define NCR_REG_DMODE     0x38
+
 #define NCR_REG_SCID      0x04
 #define NCR_REG_SXFER     0x05
 #define NCR_REG_DSTAT     0x0C
 #define NCR_REG_SSTAT0    0x0D
+#define NCR_DSTAT_DFE     0x80  // DMA FIFO empty
 #define NCR_REG_SSTAT1    0x0E
-#define NCR_REG_DSA       0x10
 #define NCR_REG_ISTAT     0x21
 #define NCR_REG_CTEST8    0x22
-#define NCR_REG_DBC       0x24
-#define NCR_REG_DCMD      0x27
-#define NCR_REG_DNAD      0x28
-#define NCR_REG_DSP       0x2C
-#define NCR_REG_DSPS      0x30
-#define NCR_REG_SCRATCH   0x34
-#define NCR_REG_DMODE     0x38
-#define NCR_REG_DCNTL     0x3B
 
 // Status bits we actually need
-#define NCR_DSTAT_DFE     0x80  // DMA FIFO empty
+//DSP
+#define NCR_REG_DSP0      0x2C
+#define NCR_REG_DSP1      0x2D
+#define NCR_REG_DSP2      0x2E
+#define NCR_REG_DSP3      0x2F
+#define NCR_REG_DCNTL     0x3B
 #define NCR_DSTAT_SIR     0x04  // SCRIPTS interrupt
+#define NCR_ISTAT_DIP     0x01  // DMA interrupt pending
 #define NCR_ISTAT_RST     0x40  // Software reset
 #define NCR_ISTAT_SIP     0x02  // SCSI interrupt pending
-#define NCR_ISTAT_DIP     0x01  // DMA interrupt pending
 
 #define NCR710_CHIP_REV   0x02
 
@@ -66,137 +72,102 @@ ncr710_reset(u32 iobase)
     outb(0x40, iobase + NCR_REG_DCNTL);    // Enable SCRIPTS
 }
 
-// static int
-// ncr710_wait_interrupt(u32 iobase, int timeout_ms)
-// {
-//     int i;
-//     for (i = 0; i < timeout_ms; i++) {
-//         u8 istat = inb(iobase + NCR_REG_ISTAT);
-//         if (istat & (NCR_ISTAT_SIP | NCR_ISTAT_DIP)) {
-//             // Clear interrupt by reading status
-//             inb(iobase + NCR_REG_DSTAT);
-//             inb(iobase + NCR_REG_SSTAT0);
-//             return 0;
-//         }
-//         usleep(1000);
-//     }
-//     return -1;  // Timeout
-// }
-
-int
-ncr710_scsi_process_op(struct disk_op_s *op)
+int ncr710_scsi_process_op(struct disk_op_s *op)
 {
     if (!CONFIG_NCR710_SCSI)
         return DISK_RET_EBADTRACK;
-    struct ncr_lun_s *nlun_gf =
-        container_of(op->drive_fl, struct ncr_lun_s, drive);
+
+    struct ncr_lun_s *nlun_gf = container_of(op->drive_fl, struct ncr_lun_s, drive);
     u16 target = GET_GLOBALFLAT(nlun_gf->target);
     u16 lun = GET_GLOBALFLAT(nlun_gf->lun);
     u8 cdbcmd[16];
     int blocksize = scsi_fill_cmd(op, cdbcmd, sizeof(cdbcmd));
     if (blocksize < 0)
         return default_process_op(op);
+
     u32 iobase = GET_GLOBALFLAT(nlun_gf->iobase);
-    
+
+    // Prepare SCSI messages and buffers
+    u8 msgout = 0x80 | lun;  // IDENTIFY message with LUN
     u8 status = 0xff;
     u8 msgin = 0xff;
-    u8 msgout[] = {
-        0x80 | lun,                 // identify message with LUN
-    };
-    
-    u32 data_size = op->count * blocksize;
-    
-    u32 script[] = {
-        0x40000000 | (target << 16), // SELECT target 
-        0x00000000,  
-        0x0e000001, 
-        (u32)MAKE_FLATPTR(GET_SEG(SS), msgout), // MOVE 1, msgout, WHEN MSG_OUT
-        
-        0x02000000 | sizeof(cdbcmd), 
-        (u32)MAKE_FLATPTR(GET_SEG(SS), cdbcmd), // MOVE cdb_size, cdbcmd, WHEN COMMAND
-        
-        data_size > 0 ? (scsi_is_read(op) ? 0x01000000 : 0x00000000) | data_size : 0x80080000, 
-        data_size > 0 ? (u32)op->buf_fl : 0x00000000,
-        // Get status
-        0x03000001,
-        (u32)MAKE_FLATPTR(GET_SEG(SS), &status), // MOVE 1, status, WHEN STATUS
-        
-        // Get message in (command complete)
-        0x07000001, 
-        (u32)MAKE_FLATPTR(GET_SEG(SS), &msgin), // MOVE 1, msgin, WHEN MSG_IN
-        0x98080000, 0x00000401,     // INT 0x401 (GOOD_STATUS_AFTER_STATUS)
-    };
-    
-    // Make sure we have proper memory alignment and endianness
-    u32 *script_ptr = malloc_tmp(sizeof(script));
-    if (!script_ptr) {
-        dprintf(1, "NCR710: Failed to allocate SCRIPTS memory\n");
-        goto fail;
-    }
-    
-    memcpy(script_ptr, script, sizeof(script));
-    
-    // Clear any pending interrupts
-    inb(iobase + NCR_REG_DSTAT);
-    inb(iobase + NCR_REG_SSTAT0);
-    inb(iobase + NCR_REG_SSTAT1);
-    
-    // Reset the controller to clear any previous state
-    outb(NCR_ISTAT_RST, iobase + NCR_REG_ISTAT);
-    usleep(1000);
-    outb(0, iobase + NCR_REG_ISTAT);
-    usleep(1000);
-    
-    // Set up NCR710 registers for SCRIPTS execution
-    outl(0, iobase + NCR_REG_DSA);                              // Data Structure Address
-    outl((u32)MAKE_FLATPTR(GET_SEG(SS), script_ptr), iobase + NCR_REG_DSP); // SCRIPTS Pointer
-    
-    dprintf(3, "NCR710: Starting SCRIPTS at 0x%x for target %d\n", 
-            (u32)MAKE_FLATPTR(GET_SEG(SS), script_ptr), target);
-    
-    outb(0x01, iobase + NCR_REG_DCNTL);     // Start SCRIPTS
 
-    int timeout = 5000; // 5 seconds
-    while (timeout-- > 0) {
+    // Data transfer parameters
+    int data_len = op->count * blocksize;
+    u32 dma_direction = scsi_is_read(op) ? 0x01000000 : 0x00000000;
+
+    u32 script[] = {
+        // SELECT ATN with target mask
+        0x41000000 | ((1 << target) << 16),
+        0x00000000,
+
+        // MOVE 1, identify_msg, WHEN MSG_OUT
+        0x0E000001,
+        (u32)MAKE_FLATPTR(GET_SEG(SS), &msgout),
+
+        // MOVE 16, cdb_data, WHEN CMD
+        0x0A000010,
+        (u32)MAKE_FLATPTR(GET_SEG(SS), cdbcmd),
+
+        // MOVE data_len, data_buffer, WHEN DATA_IN/OUT
+        dma_direction | data_len,
+        (u32)op->buf_fl,
+
+        // MOVE 1, status_buffer, WHEN STATUS
+        0x0B000001,
+        (u32)MAKE_FLATPTR(GET_SEG(SS), &status),
+
+        // MOVE 1, msg_buffer, WHEN MSG_IN
+        0x0F000001,
+        (u32)MAKE_FLATPTR(GET_SEG(SS), &msgin),
+
+        // INT 0x401 (success completion code)
+        0x98080000,
+        0x00000401
+    };
+
+    u32 dsp = (u32)MAKE_FLATPTR(GET_SEG(SS), &script);
+
+    // Write DSP address (LASI wrapper handles endianness correctly now)
+    outb(dsp & 0xff, iobase + NCR_REG_DSP0);
+    outb((dsp >> 8) & 0xff, iobase + NCR_REG_DSP1);
+    outb((dsp >> 16) & 0xff, iobase + NCR_REG_DSP2);
+    outb((dsp >> 24) & 0xff, iobase + NCR_REG_DSP3);
+
+    // Poll for completion
+    for (;;) {
         u8 istat = inb(iobase + NCR_REG_ISTAT);
-        if (istat & (NCR_ISTAT_SIP | NCR_ISTAT_DIP)) {
-            u8 dstat = inb(iobase + NCR_REG_DSTAT);
+        u8 dstat = inb(iobase + NCR_REG_DSTAT);
+
+        // Check for SCSI interrupt pending
+        if (istat & NCR_ISTAT_SIP) {
             u8 sstat0 = inb(iobase + NCR_REG_SSTAT0);
             u8 sstat1 = inb(iobase + NCR_REG_SSTAT1);
-            
-            dprintf(3, "NCR710: Interrupt - ISTAT=0x%x DSTAT=0x%x SSTAT0=0x%x SSTAT1=0x%x\n",
-                    istat, dstat, sstat0, sstat1);
-            
+            if (sstat0 || sstat1) {
+                goto fail;
+            }
+        }
+
+        // Check for DMA interrupt (SCRIPTS completion)
+        if (istat & NCR_ISTAT_DIP) {
             if (dstat & NCR_DSTAT_SIR) {
-                // SCRIPTS interrupt
+                // Check for success completion code 0x401
                 u32 dsps = inl(iobase + NCR_REG_DSPS);
-                dprintf(3, "NCR710: SCRIPTS interrupt 0x%x, status=0x%x, msgin=0x%x\n", 
-                        dsps, status, msgin);
-                
-                if (dsps == 0x401) {  // GOOD_STATUS_AFTER_STATUS
-                    if (status == 0x00) {
-                        free(script_ptr);
-                        return DISK_RET_SUCCESS;
-                    }
+                if (dsps == 0x00000401) {
+                    break; // Success!
                 }
             }
-            
-            if (sstat0 || sstat1) {
-                dprintf(1, "NCR710: SCSI error - SSTAT0=0x%x SSTAT1=0x%x\n", sstat0, sstat1);
-                break;
+            if (dstat & 0x80) {
+                goto fail;
             }
-            
-            // Handle other interrupt conditions
-            break;
         }
-        usleep(1000);
+
+        usleep(5);
     }
-    
-    if (timeout <= 0) {
-        dprintf(1, "NCR710: Command timeout\n");
+
+    if (msgin == 0 && status == 0) {
+        return DISK_RET_SUCCESS;
     }
-    
-    free(script_ptr);
 
 fail:
     return DISK_RET_EBADTRACK;
