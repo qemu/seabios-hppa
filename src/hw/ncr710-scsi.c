@@ -72,73 +72,70 @@ ncr710_reset(u32 iobase)
     outb(0x40, iobase + NCR_REG_DCNTL);    // Enable SCRIPTS
 }
 
-int ncr710_scsi_process_op(struct disk_op_s *op)
+int
+ncr710_scsi_process_op(struct disk_op_s *op)
 {
     if (!CONFIG_NCR710_SCSI)
         return DISK_RET_EBADTRACK;
-
-    struct ncr_lun_s *nlun_gf = container_of(op->drive_fl, struct ncr_lun_s, drive);
-    u16 target = GET_GLOBALFLAT(nlun_gf->target);
-    u16 lun = GET_GLOBALFLAT(nlun_gf->lun);
+    struct ncr_lun_s *llun_gf =
+        container_of(op->drive_fl, struct ncr_lun_s, drive);
+    u16 target = GET_GLOBALFLAT(llun_gf->target);
+    u16 lun = GET_GLOBALFLAT(llun_gf->lun);
     u8 cdbcmd[16];
     int blocksize = scsi_fill_cmd(op, cdbcmd, sizeof(cdbcmd));
     if (blocksize < 0)
         return default_process_op(op);
-
-    u32 iobase = GET_GLOBALFLAT(nlun_gf->iobase);
-
-    // Prepare SCSI messages and buffers
-    u8 msgout = 0x80 | lun;  // IDENTIFY message with LUN
+    u32 iobase = GET_GLOBALFLAT(llun_gf->iobase);
+    u32 dma = ((scsi_is_read(op) ? 0x01000000 : 0x00000000) |
+               (op->count * blocksize));
+    u8 msgout[] = {
+        0x80 | lun,                 // select lun
+        0x08,
+    };
     u8 status = 0xff;
+    u8 msgin_tmp[2];
     u8 msgin = 0xff;
 
-    // Data transfer parameters
-    int data_len = op->count * blocksize;
-    u32 dma_direction = scsi_is_read(op) ? 0x01000000 : 0x00000000;
-
     u32 script[] = {
-        // SELECT ATN with target mask
-        0x41000000 | ((1 << target) << 16),
+        /* select target, send scsi command */
+        0x40000000 | target << 16,  // select target
         0x00000000,
-
-        // MOVE 1, identify_msg, WHEN MSG_OUT
-        0x0E000001,
+        0x06000001,                 // msgout
         (u32)MAKE_FLATPTR(GET_SEG(SS), &msgout),
-
-        // MOVE 16, cdb_data, WHEN CMD
-        0x0A000010,
+        0x02000010,                 // scsi command
         (u32)MAKE_FLATPTR(GET_SEG(SS), cdbcmd),
 
-        // MOVE data_len, data_buffer, WHEN DATA_IN/OUT
-        dma_direction | data_len,
+        /* handle disconnect */
+        0x87820000,                 // phase == msgin ?
+        0x00000018,
+        0x07000002,                 // msgin
+        (u32)MAKE_FLATPTR(GET_SEG(SS), &msgin_tmp),
+        0x50000000,                 // re-select
+        0x00000000,
+        0x07000002,                 // msgin
+        (u32)MAKE_FLATPTR(GET_SEG(SS), &msgin_tmp),
+
+        /* dma data, get status, raise irq */
+        dma,                        // dma data
         (u32)op->buf_fl,
-
-        // MOVE 1, status_buffer, WHEN STATUS
-        0x0B000001,
+        0x03000001,                 // status
         (u32)MAKE_FLATPTR(GET_SEG(SS), &status),
-
-        // MOVE 1, msg_buffer, WHEN MSG_IN
-        0x0F000001,
+        0x07000001,                 // msgin
         (u32)MAKE_FLATPTR(GET_SEG(SS), &msgin),
-
-        // INT 0x401 (success completion code)
-        0x98080000,
-        0x00000401
+        0x98080000,                 // dma irq
+        0x00000000,
     };
-
     u32 dsp = (u32)MAKE_FLATPTR(GET_SEG(SS), &script);
+    
 
-    // Write DSP address (LASI wrapper handles endianness correctly now)
-    outb(dsp & 0xff, iobase + NCR_REG_DSP0);
-    outb((dsp >> 8) & 0xff, iobase + NCR_REG_DSP1);
+    outb(dsp         & 0xff, iobase + NCR_REG_DSP0);
+    outb((dsp >>  8) & 0xff, iobase + NCR_REG_DSP1);
     outb((dsp >> 16) & 0xff, iobase + NCR_REG_DSP2);
     outb((dsp >> 24) & 0xff, iobase + NCR_REG_DSP3);
 
-    // Poll for completion
     for (;;) {
         u8 istat = inb(iobase + NCR_REG_ISTAT);
         u8 dstat = inb(iobase + NCR_REG_DSTAT);
-
         // Check for SCSI interrupt pending
         if (istat & NCR_ISTAT_SIP) {
             u8 sstat0 = inb(iobase + NCR_REG_SSTAT0);
@@ -161,7 +158,6 @@ int ncr710_scsi_process_op(struct disk_op_s *op)
                 goto fail;
             }
         }
-
         usleep(5);
     }
 
