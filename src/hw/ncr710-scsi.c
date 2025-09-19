@@ -16,7 +16,6 @@
 #include "byteorder.h" // cpu_to_*
 #include "fw/paravirt.h" // runningOnQEMU
 #include "output.h" // dprintf
-#include "pci.h" // pci_find_device, pci_config_*
 #include "pcidevice.h" // foreachpci
 #include "romfile.h" // romfile_find
 #include "stacks.h" // run_thread
@@ -39,6 +38,12 @@
 #define SIEN_REG            0x03
 #define SCID_REG            0x04
 #define CTEST7_REG          0x1B
+#define ISTAT_REG           0x21    /* Interrupt Status */
+#define DSTAT_REG           0x0C    /* DMA Status */
+#define SSTAT0_REG          0x0D    /* SCSI Status Zero */
+#define TEMP_REG            0x1C    /* Temporary Stack */
+#define SSTAT0_REG          0x0D    /* SCSI Status Zero */
+
 
 #define ISTAT_ABRT          0x80
 #define ISTAT_SRST          0x40    // Software Reset (710 only)
