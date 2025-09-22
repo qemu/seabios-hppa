@@ -6,7 +6,7 @@
 // Note Seabios primarimarily supports PCI device.
 // Hacked to support NCR710 which is not a PCI device.
 // This driver supports the NCR 53c710 SCSI controller as found on
-// HP PA-RISC machines, accessed through the LASI (Level A System Interface).
+// HP PA-RISC machines, accessed through the LASI.
 // This file may be distributed under the terms of the GNU LGPLv3 license.
 
 #include "biosvar.h" // GET_GLOBALFLAT
