@@ -1,306 +1,80 @@
-// NCR53c710 SCSI controller support for HP PA-RISC machines.
+// NCR 53c710 SCSI definitions
 //
-// Copyright (C) 2024 Soumyajyoti Sarkar <soumyajyotisarkar23@gmail.com>
-// Based on existing seabios code.
+// Copyright (C) Soumyajyotii Ssarkar <soumyajyotisarkar23@gmail.com> 2025 QEMU project
 //
-// Note Seabios primarimarily supports PCI device.
-// Hacked to support NCR710 which is not a PCI device.
-// This driver supports the NCR 53c710 SCSI controller as found on
-// HP PA-RISC machines, accessed through the LASI.
+// Based on the lsi-scsi.c, but hacked to not support PCI device.
+// This is the bios side for the LASI's NCR53C710 SCSI Controller for QEMU.
 // This file may be distributed under the terms of the GNU LGPLv3 license.
 
 #include "biosvar.h" // GET_GLOBALFLAT
 #include "block.h" // struct drive_s
 #include "blockcmd.h" // scsi_drive_setup
 #include "config.h" // CONFIG_*
-#include "byteorder.h" // cpu_to_*
 #include "fw/paravirt.h" // runningOnQEMU
-#include "output.h" // dprintf
-#include "pcidevice.h" // foreachpci
-#include "romfile.h" // romfile_find
-#include "stacks.h" // run_thread
-#include "std/disk.h" // DISK_*
-#include "string.h" // memset
-#include "util.h" // boot_add_hd, msleep
 #include "malloc.h" // free
 #include "output.h" // dprintf
 #include "parisc/hppa_hardware.h" // LASI_SCSI_HPA
 #include "stacks.h" // run_thread
 #include "std/disk.h" // DISK_RET_SUCCESS
-#include "string.h" // memset, memcpy
-#include "util.h" // usleep, bootprio_find_scsi_mmio_device
+#include "string.h" // memset
+#include "util.h" // usleep
 
+#define LASI_SCSI_CORE_OFFSET 0x100
 
-// NCR710 register (adding all for reference)
-#define SCNTL0_REG          0x00
-#define SCNTL1_REG          0x01
-#define SDID_REG            0x02
-#define SIEN_REG            0x03
-#define SCID_REG            0x04
-#define CTEST7_REG          0x1B
-#define ISTAT_REG           0x21    /* Interrupt Status */
-#define DSTAT_REG           0x0C    /* DMA Status */
-#define SSTAT0_REG          0x0D    /* SCSI Status Zero */
-#define TEMP_REG            0x1C    /* Temporary Stack */
-#define SSTAT0_REG          0x0D    /* SCSI Status Zero */
+#define NCR_REG_SCNTL0    0x00
+#define NCR_REG_SCNTL1    0x01
+#define NCR_REG_DSA       0x10
+#define NCR_REG_DBC       0x24
+#define NCR_REG_DCMD      0x27
+#define NCR_REG_DNAD      0x28
+#define NCR_REG_DSPS      0x30
+#define NCR_REG_SCRATCH   0x34
+#define NCR_REG_DMODE     0x38
 
+#define NCR_REG_SCID      0x04
+#define NCR_REG_SXFER     0x05
+#define NCR_REG_DSTAT     0x0C
+#define NCR_REG_SSTAT0    0x0D
+#define NCR_DSTAT_DFE     0x80  // DMA FIFO empty
+#define NCR_REG_SSTAT1    0x0E
+#define NCR_REG_ISTAT     0x21
+#define NCR_REG_CTEST8    0x22
 
-#define ISTAT_ABRT          0x80
-#define ISTAT_SRST          0x40    // Software Reset (710 only)
-#define ISTAT_SIGP          0x20
-#define ISTAT_SEM           0x10
-#define ISTAT_CON           0x08
-#define ISTAT_INTF          0x04
-#define ISTAT_SIP           0x02    // SCSI Interrupt Pending
-#define ISTAT_DIP           0x01    // DMA Interrupt Pending
+#define NCR_REG_DSP0      0x2C
+#define NCR_REG_DSP1      0x2D
+#define NCR_REG_DSP2      0x2E
+#define NCR_REG_DSP3      0x2F
+#define NCR_REG_DCNTL     0x3B
+#define NCR_REG_DIEN      0x39  // DMA Interrupt Enable
+#define NCR_REG_SIEN0     0x03  // SCSI Interrupt Enable 0
+#define NCR_DSTAT_SIR     0x04  // SCRIPTS interrupt
+#define NCR_ISTAT_DIP     0x01  // DMA interrupt pending
+#define NCR_ISTAT_RST     0x40  // Software reset
+#define NCR_ISTAT_SIP     0x02  // SCSI interrupt pending
 
-#define SCNTL1_RST          0x08    // Assert SCSI Reset
+#define NCR710_CHIP_REV   0x02
 
-#define LASI_SCSI_CORE_OFFSET   0x100
-
-struct ncr710_lun_s {
+struct ncr_lun_s {
     struct drive_s drive;
     u32 iobase;
     u8 target;
     u8 lun;
 };
 
-/* I/O functions for NCR710 */
-static inline u8
-ncr710_readb(u32 iobase, u8 reg)
-{
-    u8 val = readb((void*)(iobase + reg));
-    return val;
-}
-
-static inline void
-ncr710_writeb(u32 iobase, u8 reg, u8 val)
-{
-    writeb((void*)(iobase + reg), val);
-}
-
-static inline u32
-ncr710_readl(u32 iobase, u8 reg)
-{
-    u32 val = readl((void*)(iobase + reg));
-    return val;
-}
-
-static inline void
-ncr710_writel(u32 iobase, u8 reg, u32 val)
-{
-    writel((void*)(iobase + reg), val);
-}
-
 static void
 ncr710_reset(u32 iobase)
 {
-    ncr710_writeb(iobase, ISTAT_REG, ISTAT_SRST);
-    usleep(25);
-    ncr710_writeb(iobase, ISTAT_REG, 0);
-    usleep(1000);
-}
+    outb(NCR_ISTAT_RST, iobase + NCR_REG_ISTAT);
+    usleep(25000);
+    outb(0, iobase + NCR_REG_ISTAT);
+    usleep(5000);
 
-/* Here we are faking the detect, before the lun scan failed so we need to return success */
-static int
-ncr710_detect(u32 iobase)
-{
-    u8 istat = ncr710_readb(iobase, ISTAT_REG);
-    u8 dstat = ncr710_readb(iobase, DSTAT_REG);
-    u8 sstat0 = ncr710_readb(iobase, SSTAT0_REG);
-    printf("Seabios-hppa: NCR710: initial register reads - ISTAT=0x%02x, DSTAT=0x%02x, SSTAT0=0x%02x\n",
-           istat, dstat, sstat0);
-    u32 original = ncr710_readl(iobase, TEMP_REG);
-    printf("Seabios-hppa: NCR710: original TEMP register value: 0x%08x\n", original);
-    u32 test_val = 0x12345678;
-    ncr710_writel(iobase, TEMP_REG, test_val);
-    u32 read_back = ncr710_readl(iobase, TEMP_REG);
-
-    printf("Seabios-hppa: NCR710: temp register test - wrote 0x%x, read 0x%x\n", test_val, read_back);
-
-    u8 test_byte = 0xAB;
-    ncr710_writeb(iobase, TEMP_REG, test_byte);
-    u8 readback_byte = ncr710_readb(iobase, TEMP_REG);
-    printf("Seabios-hppa: NCR710: byte test - wrote 0x%02x, read 0x%02x\n", test_byte, readback_byte);
-
-    ncr710_writel(iobase, TEMP_REG, original);
-    int detected = (read_back == test_val) || (readback_byte == test_byte);
-    if (!detected) {
-        printf("Seabios-hppa: NCR710: temp tests failed, trying reset detection\n");
-        ncr710_writeb(iobase, ISTAT_REG, ISTAT_SRST);
-        usleep(10);
-        u8 istat_after_reset = ncr710_readb(iobase, ISTAT_REG);
-        printf("Seabios-hppa: NCR710: ISTAT after reset: 0x%02x\n", istat_after_reset);
-
-        ncr710_writeb(iobase, ISTAT_REG, 0);
-        usleep(100);
-        u8 istat_after_clear = ncr710_readb(iobase, ISTAT_REG);
-        printf("Seabios-hppa: NCR710: ISTAT after clear: 0x%02x\n", istat_after_clear);
-        detected = (istat_after_reset & ISTAT_SRST) || (istat_after_clear != istat_after_reset);
-    }
-
-    printf("Seabios-hppa: NCR710: detection result: %s\n", detected ? "SUCCESS" : "FAILED");
-    return detected;
-}
-
-struct ncr710_target_state {
-    int exists;  // Device detected flag
-    int initialized; // Have we tested this target already?
-};
-
-static struct ncr710_target_state target_states[8];
-
-static int
-ncr710_select_target(u32 iobase, u8 target)
-{
-    if (target_states[target].initialized) {
-        return target_states[target].exists ? 0 : -1;
-    }
-
-    printf("Seabios-hppa: NCR710: testing target %d for existence\n", target);
-    target_states[target].initialized = 1;
-    target_states[target].exists = 0;
-    u8 istat = ncr710_readb(iobase, ISTAT_REG);
-    u8 dstat = ncr710_readb(iobase, DSTAT_REG);
-    u8 sstat0 = ncr710_readb(iobase, SSTAT0_REG);
-
-    printf("Seabios-hppa: NCR710: initial status - ISTAT=0x%02x, DSTAT=0x%02x, SSTAT0=0x%02x\n",
-           istat, dstat, sstat0);
-
-    ncr710_writeb(iobase, SCID_REG, 0x07);   // Host adapter ID = 7
-    ncr710_writeb(iobase, SDID_REG, target); // Target ID
-
-    u32 original = ncr710_readl(iobase, TEMP_REG);
-    u32 test_pattern = 0xDEADBEEF ^ target; // Make pattern unique per target
-    ncr710_writel(iobase, TEMP_REG, test_pattern);
-    u32 readback = ncr710_readl(iobase, TEMP_REG);
-    ncr710_writel(iobase, TEMP_REG, original); // Restore
-
-    if (readback != test_pattern) {
-        printf("Seabios-hppa: NCR710: controller not responding correctly for target %d\n", target);
-        return -1;
-    }
-    printf("Seabios-hppa: NCR710: target %d in primary range, checking if device exists\n", target);
-    int likely_exists = (target <= 2) ? 1 : 0;
-
-    printf("Seabios-hppa: NCR710: target %d existence check: %s\n",
-           target, likely_exists ? "assumed present" : "assumed absent");    if (likely_exists) {
-        target_states[target].exists = 1;
-        return 0;
-    } else {
-        return -1;
-    }
-}
-
-static int
-ncr710_send_command(u32 iobase, u8 target, u8 *cdb, int cdb_len,
-                   void *data, int data_len, int is_read)
-{
-    printf("Seabios-hppa: NCR710: sending command 0x%02x to target %d\n", cdb[0], target);
-
-    if (ncr710_select_target(iobase, target) < 0) {
-        printf("Seabios-hppa: NCR710: target %d does not exist, command failed\n", target);
-        return -1;
-    }
-    if (cdb[0] == 0x00) {  // TEST UNIT READY
-        printf("Seabios-hppa: NCR710: TEST UNIT READY for target %d\n", target);
-        return 0;
-    }
-
-    if (cdb[0] == 0x03) {
-        if (data && data_len >= 18) {
-            u8 *response = (u8*)data;
-            memset(response, 0, 18);
-            response[0] = 0x70; // Valid, current errors
-            response[2] = 0x00; // Sense key: NO SENSE
-            response[7] = 0x0A; // Additional sense length
-        }
-        return 0;
-    }
-
-    if (cdb[0] == 0x12) {
-        if (data && data_len >= 36) {
-            u8 *response = (u8*)data;
-            memset(response, 0, 36);
-            response[0] = 0x00; // Peripheral device type: Direct access block device
-            response[1] = 0x00; // RMB = 0
-            response[2] = 0x02; // Version: SCSI-2
-            response[3] = 0x02; // Response data format
-            response[4] = 0x1F; // Additional length
-            memcpy(&response[8], "QEMU    ", 8);   // Vendor
-            memcpy(&response[16], "QEMU HARDDISK   ", 16); // Product:: just fake it
-            memcpy(&response[32], "2.5+", 4);      // Revision
-        }
-        return 0;
-    }
-
-    if (cdb[0] == 0x25) {
-        if (data && data_len >= 8) {
-            u8 *response = (u8*)data;
-            memset(response, 0, 8);
-            response[0] = 0x00;
-            response[1] = 0x1F;
-            response[2] = 0xFF;
-            response[3] = 0xFF;  // Last block number
-            response[4] = 0x00;
-            response[5] = 0x00;
-            response[6] = 0x02;
-            response[7] = 0x00;  // Block size = 512
-        }
-        return 0;
-    }
-
-    if (cdb[0] == 0xA0) {
-        if (data && data_len >= 16) {
-            u8 *response = (u8*)data;
-            memset(response, 0, 16);
-            response[0] = 0x00;
-            response[1] = 0x00;
-            response[2] = 0x00;
-            response[3] = 0x08;
-        }
-        return 0;
-    }
-
-    if (cdb[0] == 0x5A) {  // MODE SENSE (10)
-        printf("Seabios-hppa: NCR710: MODE SENSE (10) for target %d\n", target);
-        if (data && data_len >= 8) {
-            u8 *response = (u8*)data;
-            memset(response, 0, data_len);
-            int mode_len = data_len - 2;
-            response[0] = (mode_len >> 8) & 0xFF;
-            response[1] = mode_len & 0xFF;
-        }
-        return 0;
-    }
-
-    if (cdb[0] == 0x08 || cdb[0] == 0x0A || cdb[0] == 0x28 || cdb[0] == 0x2A) {
-        printf("Seabios-hppa: NCR710: READ/write command 0x%02x for target %d\n", cdb[0], target);
-        // For read/write commands, just return success for now
-        return 0;
-    }
-
-    printf("Seabios-hppa: NCR710: unsupported command 0x%02x for target %d\n", cdb[0], target);
-    return -1;
-}
-
-/* Helper function to determine SCSI command length
- * Group 0 commands (6-byte)
- * Group 1,2 commands (10-byte)
- * Group 4,5 commands (12-byte)
- * Default to 6-byte if unknown
- */
-static int
-scsi_command_length(u8 opcode)
-{
-    switch (opcode >> 5) {
-    case 0: return 6;
-    case 1:
-    case 2: return 10;
-    case 4:
-    case 5: return 12;
-    default: return 6;
-    }
+    // Minimal configuration
+    outb(0x07, iobase + NCR_REG_SCID);     // Host ID = 7
+    outb(0x00, iobase + NCR_REG_SXFER);    // Async transfers
+    outb(0x40, iobase + NCR_REG_DCNTL);    // Enable SCRIPTS
+    outb(0x00, iobase + NCR_REG_DIEN);     // Disable DMA interrupts
+    outb(0x00, iobase + NCR_REG_SIEN0);    // Disable SCSI interrupts
 }
 
 int
@@ -308,116 +82,234 @@ ncr710_scsi_process_op(struct disk_op_s *op)
 {
     if (!CONFIG_NCR710_SCSI)
         return DISK_RET_EBADTRACK;
-
-    struct ncr710_lun_s *llun_gf =
-        container_of(op->drive_fl, struct ncr710_lun_s, drive);
+    struct ncr_lun_s *llun_gf =
+        container_of(op->drive_fl, struct ncr_lun_s, drive);
     u16 target = GET_GLOBALFLAT(llun_gf->target);
-    u32 iobase = GET_GLOBALFLAT(llun_gf->iobase);
+    u16 lun = GET_GLOBALFLAT(llun_gf->lun);
     u8 cdbcmd[16];
     int blocksize = scsi_fill_cmd(op, cdbcmd, sizeof(cdbcmd));
     if (blocksize < 0)
         return default_process_op(op);
+    u32 iobase = GET_GLOBALFLAT(llun_gf->iobase);
+    u32 dma = ((scsi_is_read(op) ? 0x01000000 : 0x00000000) |
+               (op->count * blocksize));
+    u8 status = 0xff;
+    u8 msgin = 0xff;
 
-    printf("Seabios-hppa: NCR710: sending command 0x%02x, blocksize %d, count %d\n",
-           cdbcmd[0], blocksize, op->count);
-    int ret = ncr710_send_command(iobase, target, cdbcmd,
-                                 scsi_command_length(cdbcmd[0]),
-                                 op->buf_fl, op->count * blocksize,
-                                 scsi_is_read(op));
+    u32 script[] = {
+        /* select target, send scsi command */
+        0x40000000 | target << 16,  // select target (offset 0)
+        0x00000000,                 // (no alternative address) (offset 4)
 
-    printf("Seabios-hppa: NCR710: command result: %d\n", ret);
-    return (ret == 0) ? DISK_RET_SUCCESS : DISK_RET_EBADTRACK;
+        0x02000010,                 // scsi command (offset 8)
+        (u32)MAKE_FLATPTR(GET_SEG(SS), cdbcmd), // (offset 12)
+
+        /* flexible data transfer - handle both DI and MI phases */
+        0x80070000,                 // jump if IS message in phase (offset 16)
+        0x00000000,                 // jump address - will be filled below (offset 20)
+
+        /* data in phase */
+        dma,                        // dma data (offset 24)
+        (u32)op->buf_fl,           // (offset 28)
+
+        /* status phase */
+        0x03000001,                 // status (offset 32)
+        (u32)MAKE_FLATPTR(GET_SEG(SS), &status), // (offset 36)
+
+        /* message in phase */
+        0x07000001,                 // msgin (offset 40)
+        (u32)MAKE_FLATPTR(GET_SEG(SS), &msgin), // (offset 44)
+        0x98080000,                 // dma irq (offset 48)
+        0x00000401,                 // success code (offset 52)
+    };
+    u32 dsp = (u32)MAKE_FLATPTR(GET_SEG(SS), &script);
+
+    // Calculate jump address to MESSAGE IN phase (offset:: 40 from script start)
+    script[5] = dsp + 40;
+
+
+    outb((dsp >> 24) & 0xff, iobase + NCR_REG_DSP0);
+    outb((dsp >> 16) & 0xff, iobase + NCR_REG_DSP1);
+    outb((dsp >>  8) & 0xff, iobase + NCR_REG_DSP2);
+    outb(dsp         & 0xff, iobase + NCR_REG_DSP3);
+
+    printf("NCR710: Script started, DSP=0x%08x\n", dsp);
+
+    // We poll for DSTAT.SIR to be set, which happens when script completes.
+    // I think this is better than relying on interrupts.
+    int poll_count = 0;
+    for (;;) {
+        poll_count++;
+        u8 dstat = inb(iobase + NCR_REG_DSTAT);
+
+        if (dstat & NCR_DSTAT_SIR) {
+            u8 dsps_bytes[4];
+            dsps_bytes[0] = inb(iobase + NCR_REG_DSPS + 3);
+            dsps_bytes[1] = inb(iobase + NCR_REG_DSPS + 2);
+            dsps_bytes[2] = inb(iobase + NCR_REG_DSPS + 1);
+            dsps_bytes[3] = inb(iobase + NCR_REG_DSPS + 0);
+
+            u32 dsps = (dsps_bytes[3] << 24) | (dsps_bytes[2] << 16) |
+                       (dsps_bytes[1] << 8) | dsps_bytes[0];
+
+            printf("NCR710: SCRIPTS interrupt (poll_count=%d), DSTAT=0x%02x, DSPS=0x%08x\n", poll_count, dstat, dsps);
+
+            if (dsps == 0x00000401) {
+                printf("NCR710: Command completed successfully! (target=%d, lun=%d)\n", target, lun);
+                return DISK_RET_SUCCESS;
+            } else {
+                printf("NCR710: Unexpected SCRIPTS interrupt code 0x%08x\n", dsps);
+                goto fail;
+            }
+        }
+
+        // Check for SCSI errors
+        u8 sstat0 = inb(iobase + NCR_REG_SSTAT0);
+        u8 sstat1 = inb(iobase + NCR_REG_SSTAT1);
+
+        if ((sstat0 & ~0x80) || (sstat1 & ~0x04)) {
+            printf("NCR710: SCSI error, SSTAT0=0x%02x, SSTAT1=0x%02x\n", sstat0, sstat1);
+            goto fail;
+        }
+
+        if (sstat1 & 0x04) {
+            printf("NCR710: Target selection failed (no device at target %d)\n", target);
+            goto fail; // This is expected for non-existent targets
+        }        // Check for DMA errors
+        if (dstat & 0x80) { // DMA FIFO empty or other DMA errors
+            printf("NCR710: DMA error, DSTAT=0x%02x\n", dstat);
+            goto fail;
+        }
+
+        // Continue polling
+        usleep(5);
+    }
+
+fail:
+    return DISK_RET_EBADTRACK;
+}
+
+static int
+ncr710_detect_controller(u32 iobase)
+{
+    printf("NCR710: Starting controller detection at 0x%x\n", iobase);
+
+    // Read various registers to detect the chip
+    u8 ctest8 = inb(iobase + NCR_REG_CTEST8);
+    u8 istat = inb(iobase + NCR_REG_ISTAT);
+    u8 dstat = inb(iobase + NCR_REG_DSTAT);
+    printf("NCR710: CTEST8=0x%02x, ISTAT=0x%02x, DSTAT=0x%02x\n", ctest8, istat, dstat);
+
+    u32 temp_reg = iobase + 0x1C; // TEMP register
+
+    // Save original values byte by byte
+    u8 original_temp[4];
+    original_temp[0] = inb(temp_reg);
+    original_temp[1] = inb(temp_reg + 1);
+    original_temp[2] = inb(temp_reg + 2);
+    original_temp[3] = inb(temp_reg + 3);
+    printf("NCR710: Original TEMP register: 0x%02x%02x%02x%02x\n",
+           original_temp[3], original_temp[2], original_temp[1], original_temp[0]);
+
+    // Write test pattern byte by byte (either way we only writing zeros)
+    outb(0x12, temp_reg);      // TEMP+0
+    outb(0x34, temp_reg + 1);  // TEMP+1
+    outb(0x56, temp_reg + 2);  // TEMP+2
+    outb(0x78, temp_reg + 3);  // TEMP+3
+
+    u8 read_back[4];
+    read_back[0] = inb(temp_reg);
+    read_back[1] = inb(temp_reg + 1);
+    read_back[2] = inb(temp_reg + 2);
+    read_back[3] = inb(temp_reg + 3);
+    printf("NCR710: TEMP test - wrote 0x12345678, read bytes: 0x%02x 0x%02x 0x%02x 0x%02x\n",
+           read_back[0], read_back[1], read_back[2], read_back[3]);
+
+    outb(original_temp[0], temp_reg);
+    outb(original_temp[1], temp_reg + 1);
+    outb(original_temp[2], temp_reg + 2);
+    outb(original_temp[3], temp_reg + 3);
+
+    if (read_back[0] == 0x12 && read_back[1] == 0x34 &&
+        read_back[2] == 0x56 && read_back[3] == 0x78) {
+        printf("NCR710: Controller detected successfully at 0x%x\n", iobase);
+        return 0;
+    }
+    printf("NCR710: Controller detection failed at 0x%x\n", iobase);
+    return -1;
 }
 
 static void
-ncr710_scsi_init_lun(struct ncr710_lun_s *llun, u32 iobase,
-                      u8 target, u8 lun)
+ncr710_scsi_init_lun(struct ncr_lun_s *nlun, u32 iobase, u8 target, u8 lun)
 {
-    memset(llun, 0, sizeof(*llun));
-    llun->drive.type = DTYPE_NCR710_SCSI;
-    llun->drive.max_bytes_transfer = 32*1024;   /* 32 KB */
-    llun->target = target;
-    llun->lun = lun;
-    llun->iobase = iobase;
+    memset(nlun, 0, sizeof(*nlun));
+    nlun->drive.type = DTYPE_NCR710_SCSI;
+    nlun->drive.cntl_id = 0;
+    nlun->target = target;
+    nlun->lun = lun;
+    nlun->iobase = iobase;
 }
 
 static int
 ncr710_scsi_add_lun(u32 lun, struct drive_s *tmpl_drv)
 {
-    struct ncr710_lun_s *tmpl_llun =
-        container_of(tmpl_drv, struct ncr710_lun_s, drive);
-    struct ncr710_lun_s *llun = malloc_fseg(sizeof(*llun));
-    if (!llun) {
+    struct ncr_lun_s *tmpl_nlun = container_of(tmpl_drv, struct ncr_lun_s, drive);
+    struct ncr_lun_s *nlun = malloc_fseg(sizeof(*nlun));
+    if (!nlun) {
         warn_noalloc();
         return -1;
     }
-    ncr710_scsi_init_lun(llun, tmpl_llun->iobase,
-                         tmpl_llun->target, lun);
 
-    char *name = znprintf(MAXDESCSIZE, "ncr710 %d:%d",
-                          llun->target, llun->lun);
-    int prio = bootprio_find_scsi_mmio_device((void*)(uintptr_t)tmpl_llun->iobase,
-                                             llun->target, llun->lun);
-    int ret = scsi_drive_setup(&llun->drive, name, prio, llun->target, llun->lun);
+    ncr710_scsi_init_lun(nlun, tmpl_nlun->iobase, tmpl_nlun->target, lun);
+
+    char *name = znprintf(MAXDESCSIZE, "ncr710 %d:%d", nlun->target, nlun->lun);
+    int prio = bootprio_find_scsi_device(NULL, nlun->target, nlun->lun);
+    int ret = scsi_drive_setup(&nlun->drive, name, prio, nlun->target, nlun->lun);
     free(name);
-    if (ret)
-        goto fail;
-    return 0;
 
-fail:
-    free(llun);
-    return -1;
+    if (ret) {
+        free(nlun);
+        return -1;
+    }
+    return 0;
 }
 
 static void
 ncr710_scsi_scan_target(u32 iobase, u8 target)
 {
-    printf("Seabios-hppa: NCR710: scanning target %d\n", target);
+    printf("NCR710: Starting scan of target %d\n", target);
+    struct ncr_lun_s nlun0;
+    ncr710_scsi_init_lun(&nlun0, iobase, target, 0);
 
-    struct ncr710_lun_s llun0;
-    ncr710_scsi_init_lun(&llun0, iobase, target, 0);
-
-    printf("Seabios-hppa: NCR710: attempting REPORT LUNS scan for target %d\n", target);
-    if (scsi_rep_luns_scan(&llun0.drive, ncr710_scsi_add_lun) < 0) {
-        printf("Seabios-hppa: NCR710: REPORT LUNS failed, trying sequential scan for target %d\n", target);
-        scsi_sequential_scan(&llun0.drive, 8, ncr710_scsi_add_lun);
-    } else {
-        printf("Seabios-hppa: NCR710: REPORT LUNS succeeded for target %d\n", target);
+    printf("NCR710: Trying scsi_rep_luns_scan for target %d\n", target);
+    if (scsi_rep_luns_scan(&nlun0.drive, ncr710_scsi_add_lun) < 0) {
+        printf("NCR710: scsi_rep_luns_scan failed, trying scsi_sequential_scan for target %d\n", target);
+        scsi_sequential_scan(&nlun0.drive, 8, ncr710_scsi_add_lun);
     }
+    printf("NCR710: Finished scanning target %d\n", target);
 }
 
 static void
-init_ncr710_scsi(void *data)
+init_ncr710_scsi(u32 base_addr)
 {
-    u32 iobase = (u32)(uintptr_t)data;
-
-    printf("Seabios-hppa: NCR710: found ncr710 at 0x%x\n", iobase);
-
-    // Initialize target state tracking
-    int i;
-    for (i = 0; i < 8; i++) {
-        target_states[i].exists = 0;
-        target_states[i].initialized = 0;
-    }
+    u32 iobase = base_addr + LASI_SCSI_CORE_OFFSET;
+    dprintf(1, "NCR710: Base addr=0x%x, Core offset=0x%x, IO base=0x%x\n",
+            base_addr, LASI_SCSI_CORE_OFFSET, iobase);
 
     ncr710_reset(iobase);
 
-    ncr710_writeb(iobase, SCNTL0_REG, 0x00); // Async operation
-    ncr710_writeb(iobase, SCNTL1_REG, 0x00); // Normal operation
-    ncr710_writeb(iobase, SCID_REG, 0x07);   // Host adapter ID = 7
-    ncr710_writeb(iobase, SIEN_REG, 0x00);   // Disable SCSI interrupts
-    ncr710_writeb(iobase, CTEST7_REG, 0x00); // Normal operation
-
-    printf("Seabios-hppa: NCR710: scanning for SCSI devices\n");
-
-    // Scan targets 0-2 to detect real devices that QEMU might attach
-    // This covers the common range where real SCSI devices are typically found
-    int target;
-    for (target = 0; target < 3; target++) {
-        ncr710_scsi_scan_target(iobase, target);
+    if (ncr710_detect_controller(iobase) < 0) {
+        dprintf(1, "NCR710: Controller not found at 0x%x\n", iobase);
+        return;
     }
 
-    printf("Seabios-hppa: NCR710: device scan complete\n");
+    dprintf(1, "NCR710: Found controller at 0x%x\n", iobase);
+
+    int i;
+    for (i = 0; i < 7; i++) {
+        dprintf(1, "NCR710: Scanning target %d\n", i);
+        ncr710_scsi_scan_target(iobase, i);
+    }
 }
 
 void
@@ -426,14 +318,6 @@ ncr710_scsi_setup(void)
     ASSERT32FLAT();
     if (!CONFIG_NCR710_SCSI || !runningOnQEMU())
         return;
-    u32 iobase = LASI_SCSI_HPA + LASI_SCSI_CORE_OFFSET;
-
-    printf("NCR710: LASI_SCSI_HPA=0x%08x, LASI_SCSI_CORE_OFFSET=0x%08x iobase=0x%08x\n",
-           LASI_SCSI_HPA, LASI_SCSI_CORE_OFFSET, iobase);
-    if (!ncr710_detect(iobase)) {
-        printf("NCR710: not detected at 0x%08x\n", iobase);
-        return;
-    }
-    printf("NCR710: chip detected successfully!\n");
-    run_thread(init_ncr710_scsi, (void*)(uintptr_t)iobase);
+    printf("Initializing NCR 53c710 SCSI controllers\n");
+    init_ncr710_scsi(LASI_SCSI_HPA);
 }
