@@ -100,7 +100,8 @@ ncr710_scsi_process_op(struct disk_op_s *op)
     };
     u32 dsp = (u32)MAKE_FLATPTR(GET_SEG(SS), &script);
 
-    script[5] = dsp + 40;
+    /* Jump target should be STATUS IN phase (offset 32), not MESSAGE IN (offset 40) */
+    script[5] = dsp + 32;
 
     outb(dsp         & 0xff, iobase + NCR_REG_DSP0);
     outb((dsp >>  8) & 0xff, iobase + NCR_REG_DSP1);
