@@ -102,11 +102,10 @@ ncr710_scsi_process_op(struct disk_op_s *op)
 
     script[5] = dsp + 40;
 
-
-    outb((dsp >> 24) & 0xff, iobase + NCR_REG_DSP0);
-    outb((dsp >> 16) & 0xff, iobase + NCR_REG_DSP1);
-    outb((dsp >>  8) & 0xff, iobase + NCR_REG_DSP2);
-    outb(dsp         & 0xff, iobase + NCR_REG_DSP3);
+    outb(dsp         & 0xff, iobase + NCR_REG_DSP0);
+    outb((dsp >>  8) & 0xff, iobase + NCR_REG_DSP1);
+    outb((dsp >> 16) & 0xff, iobase + NCR_REG_DSP2);
+    outb((dsp >> 24) & 0xff, iobase + NCR_REG_DSP3);
 
     DBG("NCR710: Script started, DSP=0x%08x\n", dsp);
 
@@ -117,10 +116,10 @@ ncr710_scsi_process_op(struct disk_op_s *op)
 
         if (dstat & NCR_DSTAT_SIR) {
             u8 dsps_bytes[4];
-            dsps_bytes[0] = inb(iobase + NCR_REG_DSPS + 3);
-            dsps_bytes[1] = inb(iobase + NCR_REG_DSPS + 2);
-            dsps_bytes[2] = inb(iobase + NCR_REG_DSPS + 1);
-            dsps_bytes[3] = inb(iobase + NCR_REG_DSPS + 0);
+            dsps_bytes[0] = inb(iobase + NCR_REG_DSPS + 0);
+            dsps_bytes[1] = inb(iobase + NCR_REG_DSPS + 1);
+            dsps_bytes[2] = inb(iobase + NCR_REG_DSPS + 2);
+            dsps_bytes[3] = inb(iobase + NCR_REG_DSPS + 3);
 
             u32 dsps = (dsps_bytes[3] << 24) | (dsps_bytes[2] << 16) |
                        (dsps_bytes[1] << 8) | dsps_bytes[0];
