@@ -22,6 +22,12 @@
 
 #define DBG(fmt, args...) printf(fmt, ##args)
 
+// PA-RISC is big-endian, but NCR710 registers are little-endian.
+// We follow the same  endianness conversion that is done in the Linux kernel.
+// For byte accesses on big-endian systems, XOR the register address with 3.
+// This converts: BE -> LE NCR710 registers
+#define bE 3
+
 #define NCR_REG_SCNTL0    0x00
 #define NCR_REG_SCNTL1    0x01
 #define NCR_REG_SCID      0x04
@@ -38,6 +44,10 @@
 #define NCR_REG_DSPS      0x30
 #define NCR_REG_DCNTL     0x3B
 
+// Helper macros for register access with endianness conversion
+#define NCR_READ_REG(iobase, reg)  inb((iobase) + ((reg) ^ bE))
+#define NCR_WRITE_REG(iobase, reg, val)  outb((val), (iobase) + ((reg) ^ bE))
+
 #define NCR_DSTAT_SIR     0x04
 #define NCR_ISTAT_RST     0x40
 
@@ -53,14 +63,14 @@ struct ncr_lun_s {
 static void
 ncr710_reset(u32 iobase)
 {
-    outb(NCR_ISTAT_RST, iobase + NCR_REG_ISTAT);
+    NCR_WRITE_REG(iobase, NCR_REG_ISTAT, NCR_ISTAT_RST);
     usleep(25000);
-    outb(0, iobase + NCR_REG_ISTAT);
+    NCR_WRITE_REG(iobase, NCR_REG_ISTAT, 0);
     usleep(5000);
 
-    outb(0x07, iobase + NCR_REG_SCID);
-    outb(0x00, iobase + NCR_REG_SXFER);
-    outb(0x40, iobase + NCR_REG_DCNTL);
+    NCR_WRITE_REG(iobase, NCR_REG_SCID, 0x07);
+    NCR_WRITE_REG(iobase, NCR_REG_SXFER, 0x00);
+    NCR_WRITE_REG(iobase, NCR_REG_DCNTL, 0x40);
 }
 
 int
@@ -102,24 +112,24 @@ ncr710_scsi_process_op(struct disk_op_s *op)
 
     script[5] = dsp + 32;
 
-    outb(dsp         & 0xff, iobase + NCR_REG_DSP0);
-    outb((dsp >>  8) & 0xff, iobase + NCR_REG_DSP1);
-    outb((dsp >> 16) & 0xff, iobase + NCR_REG_DSP2);
-    outb((dsp >> 24) & 0xff, iobase + NCR_REG_DSP3);
+    NCR_WRITE_REG(iobase, NCR_REG_DSP0, dsp & 0xff);
+    NCR_WRITE_REG(iobase, NCR_REG_DSP1, (dsp >> 8) & 0xff);
+    NCR_WRITE_REG(iobase, NCR_REG_DSP2, (dsp >> 16) & 0xff);
+    NCR_WRITE_REG(iobase, NCR_REG_DSP3, (dsp >> 24) & 0xff);
 
     DBG("NCR710: Script started, DSP=0x%08x\n", dsp);
 
     int poll_count = 0;
     for (;;) {
         poll_count++;
-        u8 dstat = inb(iobase + NCR_REG_DSTAT);
+        u8 dstat = NCR_READ_REG(iobase, NCR_REG_DSTAT);
 
         if (dstat & NCR_DSTAT_SIR) {
             u8 dsps_bytes[4];
-            dsps_bytes[0] = inb(iobase + NCR_REG_DSPS + 0);
-            dsps_bytes[1] = inb(iobase + NCR_REG_DSPS + 1);
-            dsps_bytes[2] = inb(iobase + NCR_REG_DSPS + 2);
-            dsps_bytes[3] = inb(iobase + NCR_REG_DSPS + 3);
+            dsps_bytes[0] = NCR_READ_REG(iobase, NCR_REG_DSPS + 0);
+            dsps_bytes[1] = NCR_READ_REG(iobase, NCR_REG_DSPS + 1);
+            dsps_bytes[2] = NCR_READ_REG(iobase, NCR_REG_DSPS + 2);
+            dsps_bytes[3] = NCR_READ_REG(iobase, NCR_REG_DSPS + 3);
 
             u32 dsps = (dsps_bytes[3] << 24) | (dsps_bytes[2] << 16) |
                        (dsps_bytes[1] << 8) | dsps_bytes[0];
@@ -135,8 +145,8 @@ ncr710_scsi_process_op(struct disk_op_s *op)
             }
         }
 
-        u8 sstat0 = inb(iobase + NCR_REG_SSTAT0);
-        u8 sstat1 = inb(iobase + NCR_REG_SSTAT1);
+        u8 sstat0 = NCR_READ_REG(iobase, NCR_REG_SSTAT0);
+        u8 sstat1 = NCR_READ_REG(iobase, NCR_REG_SSTAT1);
 
         if ((sstat0 & ~0x80) || (sstat1 & ~0x04)) {
             DBG("NCR710: SCSI error, SSTAT0=0x%02x, SSTAT1=0x%02x\n", sstat0, sstat1);
@@ -165,38 +175,39 @@ ncr710_detect_controller(u32 iobase)
 {
     DBG("NCR710: Starting controller detection at 0x%x\n", iobase);
 
-    u8 ctest8 = inb(iobase + NCR_REG_CTEST8);
-    u8 istat = inb(iobase + NCR_REG_ISTAT);
-    u8 dstat = inb(iobase + NCR_REG_DSTAT);
+    u8 ctest8 = NCR_READ_REG(iobase, NCR_REG_CTEST8);
+    u8 istat = NCR_READ_REG(iobase, NCR_REG_ISTAT);
+    u8 dstat = NCR_READ_REG(iobase, NCR_REG_DSTAT);
     DBG("NCR710: CTEST8=0x%02x, ISTAT=0x%02x, DSTAT=0x%02x\n", ctest8, istat, dstat);
 
-    u32 temp_reg = iobase + 0x1C;
+    // TEMP register is at 0x1C - using direct byte access with XOR
+    u32 temp_reg_base = 0x1C;
 
     u8 original_temp[4];
-    original_temp[0] = inb(temp_reg);
-    original_temp[1] = inb(temp_reg + 1);
-    original_temp[2] = inb(temp_reg + 2);
-    original_temp[3] = inb(temp_reg + 3);
+    original_temp[0] = NCR_READ_REG(iobase, temp_reg_base + 0);
+    original_temp[1] = NCR_READ_REG(iobase, temp_reg_base + 1);
+    original_temp[2] = NCR_READ_REG(iobase, temp_reg_base + 2);
+    original_temp[3] = NCR_READ_REG(iobase, temp_reg_base + 3);
     DBG("NCR710: Original TEMP register: 0x%02x%02x%02x%02x\n",
            original_temp[3], original_temp[2], original_temp[1], original_temp[0]);
 
-    outb(0x12, temp_reg);
-    outb(0x34, temp_reg + 1);
-    outb(0x56, temp_reg + 2);
-    outb(0x78, temp_reg + 3);
+    NCR_WRITE_REG(iobase, temp_reg_base + 0, 0x12);
+    NCR_WRITE_REG(iobase, temp_reg_base + 1, 0x34);
+    NCR_WRITE_REG(iobase, temp_reg_base + 2, 0x56);
+    NCR_WRITE_REG(iobase, temp_reg_base + 3, 0x78);
 
     u8 read_back[4];
-    read_back[0] = inb(temp_reg);
-    read_back[1] = inb(temp_reg + 1);
-    read_back[2] = inb(temp_reg + 2);
-    read_back[3] = inb(temp_reg + 3);
+    read_back[0] = NCR_READ_REG(iobase, temp_reg_base + 0);
+    read_back[1] = NCR_READ_REG(iobase, temp_reg_base + 1);
+    read_back[2] = NCR_READ_REG(iobase, temp_reg_base + 2);
+    read_back[3] = NCR_READ_REG(iobase, temp_reg_base + 3);
     DBG("NCR710: TEMP test - wrote 0x12345678, read bytes: 0x%02x 0x%02x 0x%02x 0x%02x\n",
            read_back[0], read_back[1], read_back[2], read_back[3]);
 
-    outb(original_temp[0], temp_reg);
-    outb(original_temp[1], temp_reg + 1);
-    outb(original_temp[2], temp_reg + 2);
-    outb(original_temp[3], temp_reg + 3);
+    NCR_WRITE_REG(iobase, temp_reg_base + 0, original_temp[0]);
+    NCR_WRITE_REG(iobase, temp_reg_base + 1, original_temp[1]);
+    NCR_WRITE_REG(iobase, temp_reg_base + 2, original_temp[2]);
+    NCR_WRITE_REG(iobase, temp_reg_base + 3, original_temp[3]);
 
     if (read_back[0] == 0x12 && read_back[1] == 0x34 &&
         read_back[2] == 0x56 && read_back[3] == 0x78) {
