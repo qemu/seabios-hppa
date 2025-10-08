@@ -108,8 +108,6 @@ ncr710_scsi_process_op(struct disk_op_s *op)
     };
     u32 dsp = (u32)MAKE_FLATPTR(GET_SEG(SS), &script);
 
-    /* No script[5] modification needed - removed conditional jump */
-
     NCR_WRITE_REG(iobase, NCR_REG_DSP0, dsp & 0xff);
     NCR_WRITE_REG(iobase, NCR_REG_DSP1, (dsp >> 8) & 0xff);
     NCR_WRITE_REG(iobase, NCR_REG_DSP2, (dsp >> 16) & 0xff);
