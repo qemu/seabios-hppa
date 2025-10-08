@@ -93,24 +93,22 @@ ncr710_scsi_process_op(struct disk_op_s *op)
     u8 msgin = 0xff;
 
     u32 script[] = {
-        0x40000000 | target << 16,
+        0x40000000 | target << 16,        /* SELECT target */
         0x00000000,
-        0x02000010,
+        0x02000010,                        /* Send CDB (16 bytes) */
         (u32)MAKE_FLATPTR(GET_SEG(SS), cdbcmd),
-        0x80070000,
-        0x00000000,
-        dma,
+        dma,                               /* DATA IN/OUT transfer */
         (u32)op->buf_fl,
-        0x03000001,
+        0x03000001,                        /* Receive STATUS (1 byte) */
         (u32)MAKE_FLATPTR(GET_SEG(SS), &status),
-        0x07000001,
+        0x07000001,                        /* Receive MESSAGE IN (1 byte) */
         (u32)MAKE_FLATPTR(GET_SEG(SS), &msgin),
-        0x98080000,
+        0x98080000,                        /* INT with success code */
         0x00000401,
     };
     u32 dsp = (u32)MAKE_FLATPTR(GET_SEG(SS), &script);
 
-    script[5] = dsp + 32;
+    /* No script[5] modification needed - removed conditional jump */
 
     NCR_WRITE_REG(iobase, NCR_REG_DSP0, dsp & 0xff);
     NCR_WRITE_REG(iobase, NCR_REG_DSP1, (dsp >> 8) & 0xff);
@@ -122,8 +120,10 @@ ncr710_scsi_process_op(struct disk_op_s *op)
     int poll_count = 0;
     for (;;) {
         poll_count++;
+        u8 istat = NCR_READ_REG(iobase, NCR_REG_ISTAT);
         u8 dstat = NCR_READ_REG(iobase, NCR_REG_DSTAT);
-
+        u8 sstat0 = NCR_READ_REG(iobase, NCR_REG_SSTAT0);
+        u8 sstat1 = NCR_READ_REG(iobase, NCR_REG_SSTAT1);
         if (dstat & NCR_DSTAT_SIR) {
             u8 dsps_bytes[4];
             dsps_bytes[0] = NCR_READ_REG(iobase, NCR_REG_DSPS + 0);
@@ -145,12 +145,26 @@ ncr710_scsi_process_op(struct disk_op_s *op)
             }
         }
 
-        u8 sstat0 = NCR_READ_REG(iobase, NCR_REG_SSTAT0);
-        u8 sstat1 = NCR_READ_REG(iobase, NCR_REG_SSTAT1);
+        if (istat & 0x02) {  /* SIP bit - SCSI interrupt pending */
+            DBG("NCR710: SCSI interrupt (poll_count=%d), ISTAT=0x%02x, SSTAT0=0x%02x, SSTAT1=0x%02x\n",
+                poll_count, istat, sstat0, sstat1);
+
+            if (sstat0 & 0x80) {  /* MA - Message Acknowledge / Phase Mismatch */
+                DBG("NCR710: Phase mismatch detected (poll_count=%d), command may have failed\n", poll_count);
+                goto fail;
+            }
+
+            if (sstat0 & 0x04) {  /* UDC - Unexpected Disconnect */
+                DBG("NCR710: Device disconnected (poll_count=%d)\n", poll_count);
+                return DISK_RET_SUCCESS;
+            }
+        }
 
         if ((sstat0 & ~0x80) || (sstat1 & ~0x04)) {
-            DBG("NCR710: SCSI error, SSTAT0=0x%02x, SSTAT1=0x%02x\n", sstat0, sstat1);
-            goto fail;
+            if ((sstat0 & ~0x84) || (sstat1 & ~0x04)) {
+                DBG("NCR710: SCSI error, SSTAT0=0x%02x, SSTAT1=0x%02x\n", sstat0, sstat1);
+                goto fail;
+            }
         }
 
         if (sstat1 & 0x04) {
@@ -158,7 +172,7 @@ ncr710_scsi_process_op(struct disk_op_s *op)
             goto fail;
         }
 
-        if (dstat & 0x80) {
+        if (dstat & 0x70) {
             DBG("NCR710: DMA error, DSTAT=0x%02x\n", dstat);
             goto fail;
         }
