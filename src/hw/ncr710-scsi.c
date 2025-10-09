@@ -312,6 +312,5 @@ ncr710_scsi_setup(void)
     if (!CONFIG_PARISC || !lasi_hpa)
         return;
     DBG("Initializing NCR 53c710 SCSI controllers\n");
-return; // XXX
     init_ncr710_scsi(lasi_hpa + 0x6000);
 }
