@@ -488,7 +488,7 @@ static struct pdc_system_map_mod_info mod_info_hpa_fffbf000_715 = {
 	.add_addrs = 0x0,
 };
 static struct pdc_module_path mod_path_hpa_fffbf000_715 = {
-	.path = { .flags = 0xff, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, .mod = 0x9  },
+	.path = { .flags = 0xff, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, .mod = 0x7 /* 0x9 */  },
 	.layers = { 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff }
 };
 static struct pdc_iodc iodc_data_hpa_fffbf000_715 = {

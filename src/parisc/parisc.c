@@ -873,8 +873,10 @@ printf("     keep hpa %lx\n", hpa);
     cpu_dev->mod_info->mod_addr = F_EXTEND(CPU_HPA);
     if (has_astro)
         cpu_offset = CPU_HPA - 32*0x1000;
+    else if (pci_hpa)
+        cpu_offset = pci_hpa;   /* B160L */
     else
-        cpu_offset = pci_hpa;
+        cpu_offset = CPU_HPA - 8*0x1000; /* 715 */
     cpu_dev->mod_path->path.mod = (CPU_HPA - cpu_offset) / 0x1000;
 
     /* Generate other CPU devices */
@@ -2191,30 +2193,17 @@ static int pdc_mem_map(unsigned long *arg)
     struct pdc_module_path *dp = (struct pdc_module_path *) ARG3;
     hppa_device_t *dev;
 
-// HELGE
     switch (option) {
         case PDC_MEM_MAP_HPA:
             dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
-            printf("\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
-            print_mod_path((struct pdc_module_path *)&dp->path, 1);
+            // print_mod_path((struct pdc_module_path *)&dp->path, 1);
     
-/*
-            for (i = 0; i < (MAX_DEVICES-1); i++) {
-                dev = parisc_devices + i;
-                if (dp->path.mod != dev->mod_maj)
-                    continue;
-                if ((dp->path.bc[4] != -1) && (dp->path.bc[4] != dev->mod_min))
-                    continue;
-                nr = i;
-                break;
-            }
-*/
-
             dev = find_hppa_device_by_path(dp, NULL, 0);
-            printf("\nFound ???   dev = %p\n", dev);
             if (!dev)
                 return PDC_NE_MOD;
-            memcpy(memmap, dev->mod_info, sizeof(*memmap));
+
+            memmap->hpa = dev->hpa;
+            memmap->more_pgs = dev->mod_info->mod_pgs;
             return PDC_OK;
     }
     return PDC_BAD_OPTION;
