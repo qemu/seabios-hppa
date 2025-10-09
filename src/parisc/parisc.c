@@ -147,6 +147,17 @@ unsigned long pci_hpa = PCI_HPA;    /* HPA of Dino or Elroy0 */
 unsigned long hppa_port_pci_cmd  = (PCI_HPA + DINO_PCI_ADDR);
 unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
 
+unsigned long lasi_hpa = LASI_HPA;      /* HPA of Lasi. Depends if B160 or 715 */
+/* LASI offsets */
+#define LASI_LPT        0x02000
+#define LASI_AUDIO      0x04000
+#define LASI_UART       0x05000
+#define LASI_SCSI       0x06000
+#define LASI_LAN        0x07000
+#define LASI_PS2        0x08000
+#define LASI_RTC        0x09000
+#define LASI_FDC        0x0A000
+
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
 unsigned int interact_ipl;
@@ -157,7 +168,9 @@ unsigned int __VISIBLE psw_defaults;
 unsigned long PORT_QEMU_CFG_CTL;
 unsigned int tlb_entries = 256;
 
-#define PARISC_SERIAL_CONSOLE   PORT_SERIAL1
+#define PARISC_SERIAL_CONSOLE   (LASI_UART_HPA + 0x800)
+unsigned long port_serial_1 = PARISC_SERIAL_CONSOLE;
+unsigned long port_serial_2;
 
 extern char pdc_entry;
 extern char pdc_entry_table;
@@ -181,6 +194,8 @@ extern long sr_hashing_enabled(void);
 #define FW_BLOCKSIZE    2048
 
 #define MIN_RAM_SIZE	(16*1024*1024) // 16 MB
+
+#define HPHW_NPROC      0
 
 #define CPU_HPA_IDX(i)  (F_EXTEND(CPU_HPA) + (i)*0x1000) /* CPU_HPA of CPU#i */
 
@@ -328,6 +343,7 @@ typedef struct {
     struct pci_device *pci;
     unsigned long pci_addr;
     int index;
+    unsigned char mod_maj, mod_min;
 } hppa_device_t;
 
 static hppa_device_t *find_hpa_device(unsigned long hpa);
@@ -381,30 +397,36 @@ static const char *hpa_name(unsigned long hpa)
 {
     int i;
 
-    #define DO(x) if (hpa == F_EXTEND(x)) return #x;
-    DO(GSC_HPA)
-    DO(DINO_HPA)
-    DO(DINO_UART_HPA)
-    DO(DINO_SCSI_HPA)
-    DO(CPU_HPA)
-    DO(MEMORY_HPA)
-    DO(SCSI_HPA)
-    DO(LASI_HPA)
-    DO(LASI_UART_HPA)
-    DO(LASI_SCSI_HPA)
-    DO(LASI_LAN_HPA)
-    DO(LASI_LPT_HPA)
-    DO(LASI_AUDIO_HPA)
-    DO(LASI_PS2KBD_HPA)
-    DO(LASI_PS2MOU_HPA)
-    DO(LASI_GFX_HPA)
-    DO(ASTRO_HPA)
-    DO(ASTRO_MEMORY_HPA)
-    DO(ELROY0_HPA)
-    DO(ELROY2_HPA)
-    DO(ELROY8_HPA)
-    DO(ELROYc_HPA)
-    #undef DO
+    /* mask out possible disable flag */
+    hpa &= ~HPA_DISABLED_DEVICE;
+
+    #define DO2(y,x)    if (hpa == F_EXTEND(x)) return #y;
+    #define DO1(x)      DO2(x,x)
+    DO1(GSC_HPA)
+    DO1(DINO_HPA)
+    DO1(DINO_UART_HPA)
+    DO1(DINO_SCSI_HPA)
+    DO1(CPU_HPA)
+    DO1(MEMORY_HPA)
+    DO1(SCSI_HPA)
+    DO2(LASI_HPA, lasi_hpa)
+    DO2(LASI_UART_HPA,  lasi_hpa + LASI_UART)
+    DO2(LASI_SCSI_HPA,  lasi_hpa + LASI_SCSI)
+    DO2(LASI_LAN_HPA,   lasi_hpa + LASI_LAN)
+    DO2(LASI_LPT_HPA,   lasi_hpa + LASI_LPT)
+    DO2(LASI_AUDIO_HPA, lasi_hpa + LASI_AUDIO)
+    DO2(LASI_PS2KBD_HPA,lasi_hpa + LASI_PS2)
+    DO2(LASI_PS2MOU_HPA,lasi_hpa + LASI_PS2 + 0x100)
+    DO2(LASI_FDC,       lasi_hpa + LASI_FDC)
+    DO1(LASI_GFX_HPA)
+    DO1(ASTRO_HPA)
+    DO1(ASTRO_MEMORY_HPA)
+    DO1(ELROY0_HPA)
+    DO1(ELROY2_HPA)
+    DO1(ELROY8_HPA)
+    DO1(ELROYc_HPA)
+    #undef DO1
+    #undef DO2
 
     /* could be one of the SMP CPUs */
     for (i = 1; i < smp_cpus; i++) {
@@ -507,7 +529,7 @@ int DEV_is_storage_device(hppa_device_t *dev)
     BUG_ON(!dev);
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_STORAGE_SCSI);
-    return ((dev->iodc->type & 0xf) == 0x04); /* HPHW_A_DMA */
+    return ((dev->iodc->type & 0x1f) == 0x04); /* HPHW_A_DMA */
 }
 
 int DEV_is_serial_device(hppa_device_t *dev)
@@ -516,7 +538,7 @@ int DEV_is_serial_device(hppa_device_t *dev)
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_COMMUNICATION_SERIAL ||
                 dev->pci->class == PCI_CLASS_COMMUNICATION_MULTISERIAL);
-    return ((dev->iodc->type & 0xf) == 0x0a); /* HPHW_FIO */
+    return ((dev->iodc->type & 0x1f) == 0x0a); /* HPHW_FIO */
 }
 
 int HPA_is_serial_device(unsigned long hpa)
@@ -534,12 +556,12 @@ int DEV_is_network_device(hppa_device_t *dev)
     BUG_ON(!dev);
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_NETWORK_ETHERNET);
-    return ((dev->iodc->type & 0xf) == 0x0a); /* HPHW_FIO */
+    return ((dev->iodc->type & 0x1f) == 0x0a); /* HPHW_FIO */
 }
 
 static int HPA_is_LASI_keyboard(unsigned long hpa)
 {
-    return !has_astro && (hpa == LASI_PS2KBD_HPA);
+    return !has_astro && (hpa == lasi_hpa + LASI_PS2);
 }
 
 #if 0
@@ -588,7 +610,7 @@ static const char *hpa_device_name(unsigned long hpa, int output)
     return HPA_is_LASI_graphics(hpa) ? "GRAPHICS(1)" :
             HPA_is_graphics_device(hpa) ? "VGA" :
             HPA_is_LASI_keyboard(hpa) ? "PS2" :
-            ((hpa + 0x800) == PORT_SERIAL1) ?
+            ((hpa + 0x800) == port_serial_1) ?
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
 }
 
@@ -747,7 +769,7 @@ static hppa_device_t *find_hpa_device(unsigned long hpa)
     return NULL;
 }
 
-static unsigned long keep_list[20] = { PARISC_KEEP_LIST };
+static unsigned long keep_list[24] = { PARISC_KEEP_LIST };
 
 static void remove_from_keep_list(unsigned long hpa)
 {
@@ -783,18 +805,19 @@ static int keep_add_generic_devices(void)
     while (keep_list[i]) i++;
 
     while (dev->hpa) {
-	switch (dev->iodc->type) {
-	case 0x0041:	/* Memory. Save HPA in PAGE0 entry. */
+	switch (dev->iodc->type & 0x1f) {
+        case 0x0000:    /* CPU */
+        case 0x0001:    /* Memory. Save HPA in PAGE0 entry. */
                         /* MEMORY_HPA or ASTRO_MEMORY_HPA */
-                PAGE0->imm_hpa = dev->hpa;
-                /* fallthrough */
-	case 0x0007:	/* GSC+ Port bridge */
-	case 0x004d:	/* Dino PCI bridge */
-	case 0x004b:	/* Core Bus adapter (LASI) */
-	case 0x0040:	/* CPU */
-	case 0x000d:	/* Elroy PCI bridge */
-	case 0x000c:	/* Runway port */
-		keep_list[i++] = dev->hpa;
+            PAGE0->imm_hpa = dev->hpa;
+            /* fallthrough */
+        case 0x0007:    /* GSC+ Port bridge */
+        case 0x000a:    /* Serial & UART devices */
+        case 0x000b:    /* Core Bus adapter (LASI) */
+        case 0x000c:    /* Runway port */
+        case 0x000d:    /* Elroy/Dino PCI bridge */
+             if ((dev->hpa & HPA_DISABLED_DEVICE) == 0)
+                keep_list[i++] = dev->hpa;
 	}
 	dev++;
     }
@@ -820,21 +843,25 @@ static void remove_parisc_devices(unsigned int num_cpus)
     uninitialized = 0;
 
     /* check if qemu emulates LASI chip (LASI_IAR exists) */
-    if (has_astro || *(unsigned long *)(LASI_HPA+16) == 0) {
-        remove_from_keep_list(LASI_UART_HPA);
-        remove_from_keep_list(LASI_LAN_HPA);
-        remove_from_keep_list(LASI_LPT_HPA);
+    if (!lasi_hpa) {
+printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX LASI %x \n", (int)lasi_hpa);
+        remove_from_keep_list(lasi_hpa + LASI_UART);
+        remove_from_keep_list(lasi_hpa + LASI_LAN);
+        remove_from_keep_list(lasi_hpa + LASI_LPT);
     } else {
         /* check if qemu emulates LASI i82596 LAN card */
-        if (*(unsigned long *)(LASI_LAN_HPA+12) != 0xBEEFBABE)
-            remove_from_keep_list(LASI_LAN_HPA);
+        if (*(unsigned long *)(lasi_hpa + LASI_LAN + 12) != 0xBEEFBABE)
+            remove_from_keep_list(lasi_hpa + LASI_LAN);
     }
 
     p = t = 0;
     while ((hpa = parisc_devices[p].hpa) != 0) {
+        // hpa = (unsigned int) hpa;
+printf("TEST keep hpa %lx %s\n", hpa, hpa_name(hpa));
         if (keep_this_hpa(hpa)) {
+printf("     keep hpa %lx\n", hpa);
             parisc_devices[t] = parisc_devices[p];
-            if (hpa == CPU_HPA)
+            if (hpa == CPU_HPA || (parisc_devices[p].iodc->type & 0x1f) == HPHW_NPROC)
                 cpu_dev = &parisc_devices[t];
             t++;
         }
@@ -1054,7 +1081,7 @@ static void parisc_serial_out(char c)
     portaddr_t addr = PAGE0->mem_cons.hpa;
 
     /* might not be initialized if problems happen during early bootup */
-    if (!addr) {
+    if (1 ||  !addr) {
         /* use debugoutput instead */
         builtin_console_out(c);
         return;
@@ -1076,7 +1103,6 @@ static void parisc_serial_out(char c)
         addr = dev->pci_addr;
     else
         addr += 0x800;  /* add offset for serial port on GSC */
-//  dprintf(1,"  addr %x\n", addr);
 
     if (c == '\n')
         parisc_serial_out('\r');
@@ -2065,6 +2091,11 @@ static int pdc_system_map(unsigned long *arg)
     unsigned long hpa_index;
 
     // dprintf(0, "\n\nSeaBIOS: Info: PDC_SYSTEM_MAP function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
+
+    /* old machines (715 is Snake type) do not support PDC_SYSTEM_MAP */
+    if (current_machine == &machine_715)
+        return PDC_BAD_OPTION;
+
     switch (option) {
         case PDC_FIND_MODULE:
             hpa_index = ARG4;
@@ -2160,12 +2191,26 @@ static int pdc_mem_map(unsigned long *arg)
     struct pdc_memory_map *memmap = (struct pdc_memory_map *) ARG2;
     struct pdc_module_path *dp = (struct pdc_module_path *) ARG3;
     hppa_device_t *dev;
+    int i, nr = -1; 
 
+// HELGE
     switch (option) {
         case PDC_MEM_MAP_HPA:
             dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
-            dev = find_hppa_device_by_path(dp, NULL, 0);
-            if (!dev)
+            printf("\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
+    
+            for (i = 0; i < (MAX_DEVICES-1); i++) {
+                dev = parisc_devices + i;
+                if (dp->path.mod != dev->mod_maj)
+                    continue;
+                if ((dp->path.bc[4] != -1) && (dp->path.bc[4] != dev->mod_min))
+                    continue;
+                nr = i;
+                break;
+            }
+
+            // dev = find_hppa_device_by_path(dp, NULL, 0);
+            if (nr < 0 || !dev)
                 return PDC_NE_MOD;
             memcpy(memmap, dev->mod_info, sizeof(*memmap));
             return PDC_OK;
@@ -2197,12 +2242,12 @@ static int pdc_lan_station_id(unsigned long *arg)
         case PDC_LAN_STATION_ID_READ:
             if (has_astro)
                 return PDC_INVALID_ARG;
-            if (ARG3 != LASI_LAN_HPA)
+            if (ARG3 != lasi_hpa + LASI_LAN)
                 return PDC_INVALID_ARG;
-            if (!keep_this_hpa(LASI_LAN_HPA))
+            if (!keep_this_hpa(lasi_hpa + LASI_LAN))
                 return PDC_INVALID_ARG;
             /* Let qemu store the MAC of NIC to address @ARG2 */
-            *(unsigned long *)(LASI_LAN_HPA+12) = ARG2;
+            *(unsigned long *)(lasi_hpa + LASI_LAN + 12) = ARG2;
             NO_COMPAT_RETURN_VALUE(ARG2);
             return PDC_OK;
     }
@@ -3226,30 +3271,41 @@ void __VISIBLE start_parisc_firmware(void)
     if (!str) {
         str = "B160L";
         current_machine = &machine_B160L;
+        lasi_hpa = LASI_HPA;
         pci_hpa = DINO_HPA;
         hppa_port_pci_cmd  = pci_hpa + DINO_PCI_ADDR;
         hppa_port_pci_data = pci_hpa + DINO_CONFIG_DATA;
+        port_serial_1 = lasi_hpa + LASI_UART + 0x800;
+        port_serial_2 = DINO_UART_HPA + 0x800;
+        mem_cons_boot.hpa = lasi_hpa + LASI_UART; /* serial port */
+        mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
     }
     if (strcmp(str, "C3700") == 0) {
-        has_astro = 1;
         current_machine = &machine_C3700;
+        has_astro = 1;
+        lasi_hpa = 0;
         pci_hpa = (unsigned long) ELROY0_BASE_HPA;
         hppa_port_pci_cmd  = pci_hpa + 0x040;
         hppa_port_pci_data = pci_hpa + 0x048;
         // but report back ASTRO_HPA
         // pci_hpa = (unsigned long) ASTRO_HPA;
         /* no serial port for now, will find later */
+        port_serial_1 = 0;
+        port_serial_2 = 0;
         mem_cons_boot.hpa = 0;
         mem_kbd_boot.hpa = 0;
     }
     if (strcmp(str, "715") == 0) {
-        has_astro = 0; /* No Astro */
         current_machine = &machine_715;
+        has_astro = 0; /* No Astro */
         pci_hpa = 0; /* No PCI bus */
+        lasi_hpa = LASI_HPA_715;
         hppa_port_pci_cmd  = 0;
         hppa_port_pci_data = 0;
-        mem_cons_boot.hpa = 0xf0105000; /* serial port */
-        mem_kbd_boot.hpa = 0xf0105000;
+        port_serial_1 = lasi_hpa + LASI_UART + 0x800;
+        port_serial_2 = 0;
+        mem_cons_boot.hpa = lasi_hpa + LASI_UART; /* serial port */
+        mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
     }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
@@ -3354,8 +3410,8 @@ void __VISIBLE start_parisc_firmware(void)
             ps2port_setup();
     } else {
         remove_from_keep_list(LASI_GFX_HPA);
-        remove_from_keep_list(LASI_PS2KBD_HPA);
-        remove_from_keep_list(LASI_PS2MOU_HPA);
+        remove_from_keep_list(lasi_hpa + LASI_PS2);
+        remove_from_keep_list(lasi_hpa + LASI_PS2 + 0x100);
     }
 
     /* Initialize device list */
@@ -3364,13 +3420,14 @@ void __VISIBLE start_parisc_firmware(void)
 
     add_index_all_devices();
     /* Show list of HPA devices which are still returned by firmware. */
-    if (0) {
+    if (1) {
         hppa_device_t *dev;
         unsigned long hpa;
         for (i=0; parisc_devices[i].hpa; i++) {
             dev = &parisc_devices[i];
             hpa = dev->hpa;
-            printf("Kept #%d at 0x%lx %s  parent_hpa 0x%lx index %d\n", i, hpa, hpa_name(hpa), dev->hpa_parent, dev->index );
+            printf("Kept #%d at 0x%lx %s  parent_hpa 0x%lx index %d mod_maji/min %d/%d\n",
+                i, hpa, hpa_name(hpa), dev->hpa_parent, dev->index, dev->mod_maj, dev->mod_min );
         }
     }
 
@@ -3399,14 +3456,16 @@ void __VISIBLE start_parisc_firmware(void)
     RamSize = ram_size;
     // coreboot_preinit();
 
-    pci_setup();
-    if (has_astro) {
-        iosapic_table_setup();
-    }
-    hppa_pci_build_devices_list();
+    if (pci_hpa) {
+        pci_setup();
+        if (has_astro) {
+            iosapic_table_setup();
+        }
+        hppa_pci_build_devices_list();
 
-    /* find serial PCI card when running on Astro */
-    find_serial_pci_card();
+        /* find serial PCI card when running on Astro */
+        find_serial_pci_card();
+    }
 
     serial_setup();
     // usb_setup();

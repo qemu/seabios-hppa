@@ -309,6 +309,9 @@ ncr710_scsi_setup(void)
     ASSERT32FLAT();
     if (!CONFIG_NCR710_SCSI || !runningOnQEMU())
         return;
+    if (!CONFIG_PARISC || !lasi_hpa)
+        return;
     DBG("Initializing NCR 53c710 SCSI controllers\n");
-    init_ncr710_scsi(LASI_SCSI_HPA);
+return;
+    init_ncr710_scsi(lasi_hpa + 0x6000);
 }

@@ -508,100 +508,116 @@ static struct pdc_iodc iodc_data_hpa_fffbf000_715 = {
 
 
 #define PARISC_DEVICE_LIST \
-	{	.hpa = 0xf8000000,\
+	{	.hpa = 0xf8000000 + HPA_DISABLED_DEVICE,\
 		.iodc = &iodc_data_hpa_f8000000_715,\
 		.mod_info = &mod_info_hpa_f8000000_715,\
 		.mod_path = &mod_path_hpa_f8000000_715,\
 		.num_addr = HPA_f8000000_715_num_addr,\
+                .mod_maj = 1, .mod_min = 0, \
 		.add_addr = { HPA_f8000000_715_add_addr } },\
 	{	.hpa = 0xf0100000,\
 		.iodc = &iodc_data_hpa_f0100000,\
 		.mod_info = &mod_info_hpa_f0100000,\
 		.mod_path = &mod_path_hpa_f0100000,\
 		.num_addr = HPA_f0100000_num_addr,\
+                .mod_maj = 2, .mod_min = 0, \
 		.add_addr = { HPA_f0100000_add_addr } },\
 	{	.hpa = 0xf0106000,\
 		.iodc = &iodc_data_hpa_f0106000,\
 		.mod_info = &mod_info_hpa_f0106000,\
 		.mod_path = &mod_path_hpa_f0106000,\
 		.num_addr = HPA_f0106000_num_addr,\
+                .mod_maj = 2, .mod_min = 1, \
 		.add_addr = { HPA_f0106000_add_addr } },\
 	{	.hpa = 0xf0107000,\
 		.iodc = &iodc_data_hpa_f0107000,\
 		.mod_info = &mod_info_hpa_f0107000,\
 		.mod_path = &mod_path_hpa_f0107000,\
 		.num_addr = HPA_f0107000_num_addr,\
+                .mod_maj = 2, .mod_min = 2, \
 		.add_addr = { HPA_f0107000_add_addr } },\
 	{	.hpa = 0xf0105000,\
 		.iodc = &iodc_data_hpa_f0105000,\
 		.mod_info = &mod_info_hpa_f0105000,\
 		.mod_path = &mod_path_hpa_f0105000,\
 		.num_addr = HPA_f0105000_num_addr,\
+                .mod_maj = 2, .mod_min = 4, \
 		.add_addr = { HPA_f0105000_add_addr } },\
 	{	.hpa = 0xf0102000,\
 		.iodc = &iodc_data_hpa_f0102000,\
 		.mod_info = &mod_info_hpa_f0102000,\
 		.mod_path = &mod_path_hpa_f0102000,\
 		.num_addr = HPA_f0102000_num_addr,\
+                .mod_maj = 2, .mod_min = 6, \
 		.add_addr = { HPA_f0102000_add_addr } },\
-	{	.hpa = 0xf0104000,\
+	{	.hpa = 0xf0104000 + HPA_DISABLED_DEVICE,\
 		.iodc = &iodc_data_hpa_f0104000,\
 		.mod_info = &mod_info_hpa_f0104000,\
 		.mod_path = &mod_path_hpa_f0104000,\
 		.num_addr = HPA_f0104000_num_addr,\
+                .mod_maj = 2, .mod_min = 8, \
 		.add_addr = { HPA_f0104000_add_addr } },\
-	{	.hpa = 0xf010a000,\
+	{	.hpa = 0xf010a000 + HPA_DISABLED_DEVICE,\
 		.iodc = &iodc_data_hpa_f010a000,\
 		.mod_info = &mod_info_hpa_f010a000,\
 		.mod_path = &mod_path_hpa_f010a000,\
 		.num_addr = HPA_f010a000_num_addr,\
+                .mod_maj = 2, .mod_min = 10, \
 		.add_addr = { HPA_f010a000_add_addr } },\
 	{	.hpa = 0xf0108000,\
 		.iodc = &iodc_data_hpa_f0108000,\
 		.mod_info = &mod_info_hpa_f0108000,\
 		.mod_path = &mod_path_hpa_f0108000,\
 		.num_addr = HPA_f0108000_num_addr,\
+                .mod_maj = 2, .mod_min = 11, \
 		.add_addr = { HPA_f0108000_add_addr } },\
 	{	.hpa = 0xf0108100,\
 		.iodc = &iodc_data_hpa_f0108100,\
 		.mod_info = &mod_info_hpa_f0108100,\
 		.mod_path = &mod_path_hpa_f0108100,\
 		.num_addr = HPA_f0108100_num_addr,\
+                .mod_maj = 2, .mod_min = 12, \
 		.add_addr = { HPA_f0108100_add_addr } },\
-	{	.hpa = 0xfc000000,\
+	{	.hpa = 0xfc000000 + HPA_DISABLED_DEVICE,\
 		.iodc = &iodc_data_hpa_fc000000,\
 		.mod_info = &mod_info_hpa_fc000000,\
 		.mod_path = &mod_path_hpa_fc000000,\
 		.num_addr = HPA_fc000000_num_addr,\
+                .mod_maj = 4, .mod_min = 0, \
 		.add_addr = { HPA_fc000000_add_addr } },\
-	{	.hpa = 0xf0200000,\
+	{	.hpa = 0xf0200000 + HPA_DISABLED_DEVICE,\
 		.iodc = &iodc_data_hpa_f0200000,\
 		.mod_info = &mod_info_hpa_f0200000,\
 		.mod_path = &mod_path_hpa_f0200000,\
 		.num_addr = HPA_f0200000_num_addr,\
+                .mod_maj = 5, .mod_min = 0, \
 		.add_addr = { HPA_f0200000_add_addr } },\
-	{	.hpa = 0xf0201000,\
+	{	.hpa = 0xf0201000 + HPA_DISABLED_DEVICE,\
 		.iodc = &iodc_data_hpa_f0201000,\
 		.mod_info = &mod_info_hpa_f0201000,\
 		.mod_path = &mod_path_hpa_f0201000,\
 		.num_addr = HPA_f0201000_num_addr,\
+                .mod_maj = 5, .mod_min = 1, \
 		.add_addr = { HPA_f0201000_add_addr } },\
-	{	.hpa = 0xf0202000,\
+	{	.hpa = 0xf0202000 + HPA_DISABLED_DEVICE,\
 		.iodc = &iodc_data_hpa_f0202000,\
 		.mod_info = &mod_info_hpa_f0202000,\
 		.mod_path = &mod_path_hpa_f0202000,\
 		.num_addr = HPA_f0202000_num_addr,\
+                .mod_maj = 5, .mod_min = 2, \
 		.add_addr = { HPA_f0202000_add_addr } },\
-	{	.hpa = 0xfffbe000,\
+	{	.hpa = CPU_HPA, /* 0xfffbe000 */ \
 		.iodc = &iodc_data_hpa_fffbe000,\
 		.mod_info = &mod_info_hpa_fffbe000,\
 		.mod_path = &mod_path_hpa_fffbe000,\
 		.num_addr = HPA_fffbe000_num_addr,\
+                .mod_maj = 8, .mod_min = 0, \
 		.add_addr = { HPA_fffbe000_add_addr } },\
-	{	.hpa = 0xfffbf000,\
+	{	.hpa = MEMORY_HPA, /* 0xfffbf000 */ \
 		.iodc = &iodc_data_hpa_fffbf000_715,\
 		.mod_info = &mod_info_hpa_fffbf000_715,\
 		.mod_path = &mod_path_hpa_fffbf000_715,\
 		.num_addr = HPA_fffbf000_715_num_addr,\
+                .mod_maj = 9, .mod_min = 0, \
 		.add_addr = { HPA_fffbf000_715_add_addr } },\
 	{ 0, }
