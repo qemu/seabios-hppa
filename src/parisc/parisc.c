@@ -1083,7 +1083,7 @@ static void parisc_serial_out(char c)
     portaddr_t addr = PAGE0->mem_cons.hpa;
 
     /* might not be initialized if problems happen during early bootup */
-    if (1 ||  !addr) {
+    if (1 || !addr) { /* FIXME !!! */
         /* use debugoutput instead */
         builtin_console_out(c);
         return;
@@ -1107,6 +1107,8 @@ static void parisc_serial_out(char c)
 
     if (c == '\n')
         parisc_serial_out('\r');
+
+    // asm volatile("copy %0, %%r1\n" : : "r" (addr)); while (1);
 
     for (;;) {
         u8 lsr = inb(F_EXTEND(addr+SEROFF_LSR));
