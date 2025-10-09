@@ -857,9 +857,9 @@ printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX LASI %x \n", (int)lasi_hpa);
     p = t = 0;
     while ((hpa = parisc_devices[p].hpa) != 0) {
         // hpa = (unsigned int) hpa;
-printf("TEST keep hpa %lx %s\n", hpa, hpa_name(hpa));
+        // printf("TEST keep hpa %lx %s\n", hpa, hpa_name(hpa));
         if (keep_this_hpa(hpa)) {
-printf("     keep hpa %lx\n", hpa);
+            // printf("     keep hpa %lx\n", hpa);
             parisc_devices[t] = parisc_devices[p];
             if (hpa == CPU_HPA || (parisc_devices[p].iodc->type & 0x1f) == HPHW_NPROC)
                 cpu_dev = &parisc_devices[t];
@@ -3413,7 +3413,7 @@ void __VISIBLE start_parisc_firmware(void)
 
     add_index_all_devices();
     /* Show list of HPA devices which are still returned by firmware. */
-    if (1) {
+    if (0) {
         hppa_device_t *dev;
         unsigned long hpa;
         for (i=0; parisc_devices[i].hpa; i++) {
