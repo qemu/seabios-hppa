@@ -343,7 +343,6 @@ typedef struct {
     struct pci_device *pci;
     unsigned long pci_addr;
     int index;
-    unsigned char mod_maj, mod_min;
 } hppa_device_t;
 
 static hppa_device_t *find_hpa_device(unsigned long hpa);
@@ -614,11 +613,12 @@ static const char *hpa_device_name(unsigned long hpa, int output)
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
 }
 
-static void print_mod_path(struct pdc_module_path *p)
+static void print_mod_path(struct pdc_module_path *p, int newline)
 {
-    dprintf(1, "PATH %d/%d/%d/%d/%d/%d/%d:%d.%d.%d ", p->path.bc[0], p->path.bc[1],
+    printf("PATH %d/%d/%d/%d/%d/%d/%d:%d.%d.%d %s", p->path.bc[0], p->path.bc[1],
             p->path.bc[2],p->path.bc[3],p->path.bc[4],p->path.bc[5],
-            p->path.mod, p->layers[0], p->layers[1], p->layers[2]);
+            p->path.mod, p->layers[0], p->layers[1], p->layers[2],
+            newline ? "\n":"");
 }
 
 void make_module_path_from_pcidev(struct pci_device *pci,
@@ -1088,14 +1088,13 @@ static void parisc_serial_out(char c)
     }
     if (0) {
         dprintf(1,"parisc_serial_out  search hpa %x   ", PAGE0->mem_cons.hpa);
-        print_mod_path(&PAGE0->mem_cons.dp);
-        dprintf(1,"  \n");
+        print_mod_path(&PAGE0->mem_cons.dp, 1);
     }
     hppa_device_t *dev;
     dev = find_hppa_device_by_path(&PAGE0->mem_cons.dp, NULL, 0);
     if (0) {
         dprintf(1,"parisc_serial_out  hpa %x\n", PAGE0->mem_cons.hpa);
-        print_mod_path(dev->mod_path);
+        print_mod_path(dev->mod_path, 0);
     }
     if (!dev) hlt();
     BUG_ON(!dev);
@@ -2105,7 +2104,7 @@ static int pdc_system_map(unsigned long *arg)
 
             if (0) {
                 dprintf(1, "PDC_FIND_MODULE dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
-                print_mod_path(dev->mod_path);
+                print_mod_path(dev->mod_path, 0);
                 if (dev->pci)
                     dprintf(1, "PCI %pP ", dev->pci);
                 dprintf(1, "\n");
@@ -2144,7 +2143,7 @@ static int pdc_system_map(unsigned long *arg)
             hppa_device_t *dev = find_hppa_device_by_path(mod_path, &hpa_index, 1); // XXX
             if (0) {
                 dprintf(1, "PDC_TRANSLATE_PATH dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
-                print_mod_path(mod_path);
+                print_mod_path(mod_path, 0);
                 if (dev && dev->pci)
                     dprintf(1, "PCI %pP ", dev->pci);
                 dprintf(1, "\n");
@@ -2191,14 +2190,15 @@ static int pdc_mem_map(unsigned long *arg)
     struct pdc_memory_map *memmap = (struct pdc_memory_map *) ARG2;
     struct pdc_module_path *dp = (struct pdc_module_path *) ARG3;
     hppa_device_t *dev;
-    int i, nr = -1; 
 
 // HELGE
     switch (option) {
         case PDC_MEM_MAP_HPA:
             dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
             printf("\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
+            print_mod_path((struct pdc_module_path *)&dp->path, 1);
     
+/*
             for (i = 0; i < (MAX_DEVICES-1); i++) {
                 dev = parisc_devices + i;
                 if (dp->path.mod != dev->mod_maj)
@@ -2208,9 +2208,11 @@ static int pdc_mem_map(unsigned long *arg)
                 nr = i;
                 break;
             }
+*/
 
-            // dev = find_hppa_device_by_path(dp, NULL, 0);
-            if (nr < 0 || !dev)
+            dev = find_hppa_device_by_path(dp, NULL, 0);
+            printf("\nFound ???   dev = %p\n", dev);
+            if (!dev)
                 return PDC_NE_MOD;
             memcpy(memmap, dev->mod_info, sizeof(*memmap));
             return PDC_OK;
@@ -3426,8 +3428,9 @@ void __VISIBLE start_parisc_firmware(void)
         for (i=0; parisc_devices[i].hpa; i++) {
             dev = &parisc_devices[i];
             hpa = dev->hpa;
-            printf("Kept #%d at 0x%lx %s  parent_hpa 0x%lx index %d mod_maji/min %d/%d\n",
-                i, hpa, hpa_name(hpa), dev->hpa_parent, dev->index, dev->mod_maj, dev->mod_min );
+            printf("Kept #%d at 0x%lx %s  parent_hpa 0x%lx index %d ",
+                i, hpa, hpa_name(hpa), dev->hpa_parent, dev->index);
+            print_mod_path(dev->mod_path, 1);
         }
     }
 
