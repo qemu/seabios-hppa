@@ -5,7 +5,7 @@
 #define HW_HPPA_HPPA_HARDWARE_H
 
 #define FIRMWARE_START  0xf0000000
-#define FIRMWARE_END    0xf0800000
+#define FIRMWARE_END    0xf0100000
 #define FIRMWARE_HIGH   0xfffffff0  /* upper 32-bits of 64-bit firmware address */
 
 #define RAM_MAP_HIGH  0x0100000000  /* memory above 3.75 GB is mapped here */
