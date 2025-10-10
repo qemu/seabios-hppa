@@ -147,7 +147,7 @@ unsigned long pci_hpa = PCI_HPA;    /* HPA of Dino or Elroy0 */
 unsigned long hppa_port_pci_cmd  = (PCI_HPA + DINO_PCI_ADDR);
 unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
 
-unsigned long lasi_hpa = LASI_HPA;      /* HPA of Lasi. Depends if B160 or 715 */
+unsigned long lasi_hpa; /* HPA of Lasi. Depends if B160 or 715 */
 /* LASI offsets */
 #define LASI_LPT        0x02000
 #define LASI_AUDIO      0x04000
@@ -844,10 +844,14 @@ static void remove_parisc_devices(unsigned int num_cpus)
 
     /* check if qemu emulates LASI chip (LASI_IAR exists) */
     if (!lasi_hpa) {
-printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX LASI %x \n", (int)lasi_hpa);
         remove_from_keep_list(lasi_hpa + LASI_UART);
+        remove_from_keep_list(lasi_hpa + LASI_SCSI);
         remove_from_keep_list(lasi_hpa + LASI_LAN);
         remove_from_keep_list(lasi_hpa + LASI_LPT);
+        remove_from_keep_list(lasi_hpa + LASI_AUDIO);
+        remove_from_keep_list(lasi_hpa + LASI_PS2);
+        remove_from_keep_list(lasi_hpa + LASI_PS2 + 0x100);
+        remove_from_keep_list(lasi_hpa + LASI_FDC);
     } else {
         /* check if qemu emulates LASI i82596 LAN card */
         if (*(unsigned long *)(lasi_hpa + LASI_LAN + 12) != 0xBEEFBABE)
@@ -1083,7 +1087,7 @@ static void parisc_serial_out(char c)
     portaddr_t addr = PAGE0->mem_cons.hpa;
 
     /* might not be initialized if problems happen during early bootup */
-    if (1 || !addr) { /* FIXME !!! */
+    if (!addr) {
         /* use debugoutput instead */
         builtin_console_out(c);
         return;
