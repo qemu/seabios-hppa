@@ -148,15 +148,6 @@ unsigned long hppa_port_pci_cmd  = (PCI_HPA + DINO_PCI_ADDR);
 unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
 
 unsigned long lasi_hpa; /* HPA of Lasi. Depends if B160 or 715 */
-/* LASI offsets */
-#define LASI_LPT        0x02000
-#define LASI_AUDIO      0x04000
-#define LASI_UART       0x05000
-#define LASI_SCSI       0x06000
-#define LASI_LAN        0x07000
-#define LASI_PS2        0x08000
-#define LASI_RTC        0x09000
-#define LASI_FDC        0x0A000
 
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
@@ -560,7 +551,7 @@ int DEV_is_network_device(hppa_device_t *dev)
 
 static int HPA_is_LASI_keyboard(unsigned long hpa)
 {
-    return !has_astro && (hpa == lasi_hpa + LASI_PS2);
+    return !has_astro && (hpa == (lasi_hpa + LASI_PS2));
 }
 
 #if 0
@@ -3003,7 +2994,7 @@ static struct pz_device mem_cons_sti_boot = {
 };
 
 static struct pz_device mem_kbd_sti_boot = {
-    .hpa = LASI_PS2KBD_HPA,
+    .hpa = 0, /* initialized at startup to PS2 port if available */
     .cl_class = CL_KEYBD,
 };
 
@@ -3095,6 +3086,7 @@ static void find_serial_pci_card(void)
     mem_cons_boot.hpa = pdev->hpa;
     mem_kbd_boot.hpa = pdev->hpa;
     mem_kbd_sti_boot.hpa = pdev->hpa;
+
 }
 
 /* find SCSI PCI card (to be used as boot device) */
@@ -3265,44 +3257,48 @@ void __VISIBLE start_parisc_firmware(void)
 
     /* which machine shall we emulate? */
     str = romfile_loadfile("/etc/hppa/machine", NULL);
-    if (!str) {
-        str = "B160L";
+    if (!str)
+        str = "B160L";  /* default machine */
+    if (strcmp(str, "B160L") == 0) {
         current_machine = &machine_B160L;
-        lasi_hpa = LASI_HPA;
         pci_hpa = DINO_HPA;
         hppa_port_pci_cmd  = pci_hpa + DINO_PCI_ADDR;
         hppa_port_pci_data = pci_hpa + DINO_CONFIG_DATA;
+        lasi_hpa = LASI_HPA;
         port_serial_1 = lasi_hpa + LASI_UART + 0x800;
         port_serial_2 = DINO_UART_HPA + 0x800;
         mem_cons_boot.hpa = lasi_hpa + LASI_UART; /* serial port */
         mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
+        mem_kbd_sti_boot.hpa = lasi_hpa + LASI_PS2;
     }
     if (strcmp(str, "C3700") == 0) {
         current_machine = &machine_C3700;
         has_astro = 1;
-        lasi_hpa = 0;
         pci_hpa = (unsigned long) ELROY0_BASE_HPA;
         hppa_port_pci_cmd  = pci_hpa + 0x040;
         hppa_port_pci_data = pci_hpa + 0x048;
         // but report back ASTRO_HPA
         // pci_hpa = (unsigned long) ASTRO_HPA;
+        lasi_hpa = 0;
         /* no serial port for now, will find later */
         port_serial_1 = 0;
         port_serial_2 = 0;
         mem_cons_boot.hpa = 0;
         mem_kbd_boot.hpa = 0;
+        mem_kbd_sti_boot.hpa = 0;
     }
     if (strcmp(str, "715") == 0) {
         current_machine = &machine_715;
         has_astro = 0; /* No Astro */
         pci_hpa = 0; /* No PCI bus */
-        lasi_hpa = LASI_HPA_715;
         hppa_port_pci_cmd  = 0;
         hppa_port_pci_data = 0;
+        lasi_hpa = LASI_HPA_715;
         port_serial_1 = lasi_hpa + LASI_UART + 0x800;
         port_serial_2 = 0;
         mem_cons_boot.hpa = lasi_hpa + LASI_UART; /* serial port */
         mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
+        mem_kbd_sti_boot.hpa = lasi_hpa + LASI_PS2;
     }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
@@ -3466,6 +3462,7 @@ void __VISIBLE start_parisc_firmware(void)
     }
 
     serial_setup();
+    ps2port_setup();
     // usb_setup();
     // ohci_setup();
     block_setup();

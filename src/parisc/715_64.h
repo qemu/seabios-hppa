@@ -512,7 +512,7 @@ static struct pdc_iodc iodc_data_hpa_fffbf000_715 = {
 
 
 #define PARISC_DEVICE_LIST \
-	{	.hpa = 0xf8000000 + HPA_DISABLED_DEVICE,\
+	{	.hpa = LASI_GFX_HPA,\
 		.iodc = &iodc_data_hpa_f8000000_715,\
 		.mod_info = &mod_info_hpa_f8000000_715,\
 		.mod_path = &mod_path_hpa_f8000000_715,\
