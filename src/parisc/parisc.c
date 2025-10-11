@@ -1103,8 +1103,6 @@ static void parisc_serial_out(char c)
     if (c == '\n')
         parisc_serial_out('\r');
 
-    // asm volatile("copy %0, %%r1\n" : : "r" (addr)); while (1);
-
     for (;;) {
         u8 lsr = inb(F_EXTEND(addr+SEROFF_LSR));
         if ((lsr & 0x60) == 0x60) {
@@ -2194,7 +2192,7 @@ static int pdc_mem_map(unsigned long *arg)
         case PDC_MEM_MAP_HPA:
             dprintf(0, "\nSeaBIOS: PDC_MEM_MAP_HPA  bus = %d,  mod = %d\n", dp->path.bc[4], dp->path.mod);
             // print_mod_path((struct pdc_module_path *)&dp->path, 1);
-    
+
             dev = find_hppa_device_by_path(dp, NULL, 0);
             if (!dev)
                 return PDC_NE_MOD;
