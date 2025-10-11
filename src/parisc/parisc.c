@@ -3025,7 +3025,7 @@ static struct pz_device mem_kbd_boot = {
 
 static struct pz_device mem_boot_boot = {
     .dp.path.flags = PF_AUTOBOOT,
-    .hpa = LASI_SCSI_HPA,  // may be overwritten. Default to LASI SCSI
+    .hpa = 0,  // set at bootup to LASI SCSI or PCI SCSI
     .cl_class = CL_RANDOM,
 };
 
@@ -3285,6 +3285,7 @@ void __VISIBLE start_parisc_firmware(void)
         mem_cons_boot.hpa = lasi_hpa + LASI_UART; /* serial port */
         mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
         mem_kbd_sti_boot.hpa = lasi_hpa + LASI_PS2;
+        mem_boot_boot.hpa = lasi_hpa + LASI_SCSI;
     }
     if (strcmp(str, "C3700") == 0) {
         current_machine = &machine_C3700;
@@ -3314,6 +3315,7 @@ void __VISIBLE start_parisc_firmware(void)
         mem_cons_boot.hpa = lasi_hpa + LASI_UART; /* serial port */
         mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
         mem_kbd_sti_boot.hpa = lasi_hpa + LASI_PS2;
+        mem_boot_boot.hpa = lasi_hpa + LASI_SCSI;
     }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
