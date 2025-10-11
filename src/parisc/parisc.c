@@ -147,7 +147,7 @@ unsigned long pci_hpa = PCI_HPA;    /* HPA of Dino or Elroy0 */
 unsigned long hppa_port_pci_cmd  = (PCI_HPA + DINO_PCI_ADDR);
 unsigned long hppa_port_pci_data = (PCI_HPA + DINO_CONFIG_DATA);
 
-unsigned long lasi_hpa; /* HPA of Lasi. Depends if B160 or 715 */
+unsigned long lasi_hpa; /* HPA of Lasi, different on B160L and 715 */
 
 /* Want PDC boot menu? Enable via qemu "-boot menu=on" option. */
 unsigned int show_boot_menu;
@@ -813,17 +813,17 @@ static int keep_add_generic_devices(void)
     while (keep_list[i]) i++;
 
     while (dev->hpa) {
-	switch (dev->iodc->type & 0x1f) {
-        case 0x0000:    /* CPU */
-        case 0x0001:    /* Memory. Save HPA in PAGE0 entry. */
-                        /* MEMORY_HPA or ASTRO_MEMORY_HPA */
+        switch (dev->iodc->type & 0x1f) {
+        case HPHW_MEMORY:       /* Memory. Save HPA in PAGE0 entry. */
+                                /* MEMORY_HPA or ASTRO_MEMORY_HPA */
             PAGE0->imm_hpa = dev->hpa;
             /* fallthrough */
-        case 0x0007:    /* GSC+ Port bridge */
-        case 0x000a:    /* Serial & UART devices */
-        case 0x000b:    /* Core Bus adapter (LASI) */
-        case 0x000c:    /* Runway port */
-        case 0x000d:    /* Elroy/Dino PCI bridge */
+        case HPHW_NPROC:        /* CPU */
+        case HPHW_BCPORT:       /* GSC+ Port bridge */
+        case HPHW_FIO:          /* Serial & UART devices */
+        case HPHW_BA:           /* Core Bus adapter (LASI) */
+        case HPHW_IOA:          /* Runway port */
+        case HPHW_BRIDGE:       /* Elroy/Dino PCI bridge */
              if ((dev->hpa & HPA_DISABLED_DEVICE) == 0)
                 keep_list[i++] = dev->hpa;
 	}
@@ -884,11 +884,11 @@ static void remove_parisc_devices(unsigned int num_cpus)
     BUG_ON(!cpu_dev);
     cpu_dev->mod_info->mod_addr = F_EXTEND(CPU_HPA);
     if (has_astro)
-        cpu_offset = CPU_HPA - 32*0x1000;
+        cpu_offset = CPU_HPA - 32 * 0x1000;
     else if (pci_hpa)
         cpu_offset = pci_hpa;   /* B160L */
     else
-        cpu_offset = CPU_HPA - 8*0x1000; /* 715 */
+        cpu_offset = CPU_HPA - 8 * 0x1000; /* 715 */
     cpu_dev->mod_path->path.mod = (CPU_HPA - cpu_offset) / 0x1000;
 
     /* Generate other CPU devices */
@@ -3009,7 +3009,7 @@ static struct pz_device mem_cons_sti_boot = {
 };
 
 static struct pz_device mem_kbd_sti_boot = {
-    .hpa = 0, /* initialized at startup to PS2 port if available */
+    .hpa = 0, /* initialized to PS2 port if available */
     .cl_class = CL_KEYBD,
 };
 
@@ -3025,7 +3025,7 @@ static struct pz_device mem_kbd_boot = {
 
 static struct pz_device mem_boot_boot = {
     .dp.path.flags = PF_AUTOBOOT,
-    .hpa = 0,  // set at bootup to LASI SCSI or PCI SCSI
+    .hpa = 0, /* initialized to some SCSI card if available */
     .cl_class = CL_RANDOM,
 };
 
@@ -3101,7 +3101,6 @@ static void find_serial_pci_card(void)
     mem_cons_boot.hpa = pdev->hpa;
     mem_kbd_boot.hpa = pdev->hpa;
     mem_kbd_sti_boot.hpa = pdev->hpa;
-
 }
 
 /* find SCSI PCI card (to be used as boot device) */
@@ -3275,6 +3274,7 @@ void __VISIBLE start_parisc_firmware(void)
     if (!str)
         str = "B160L";  /* default machine */
     if (strcmp(str, "B160L") == 0) {
+        has_astro = 0; /* No Astro */
         current_machine = &machine_B160L;
         pci_hpa = DINO_HPA;
         hppa_port_pci_cmd  = pci_hpa + DINO_PCI_ADDR;
@@ -3288,8 +3288,8 @@ void __VISIBLE start_parisc_firmware(void)
         mem_boot_boot.hpa = lasi_hpa + LASI_SCSI;
     }
     if (strcmp(str, "C3700") == 0) {
-        current_machine = &machine_C3700;
         has_astro = 1;
+        current_machine = &machine_C3700;
         pci_hpa = (unsigned long) ELROY0_BASE_HPA;
         hppa_port_pci_cmd  = pci_hpa + 0x040;
         hppa_port_pci_data = pci_hpa + 0x048;
@@ -3304,8 +3304,8 @@ void __VISIBLE start_parisc_firmware(void)
         mem_kbd_sti_boot.hpa = 0;
     }
     if (strcmp(str, "715") == 0) {
-        current_machine = &machine_715;
         has_astro = 0; /* No Astro */
+        current_machine = &machine_715;
         pci_hpa = 0; /* No PCI bus */
         hppa_port_pci_cmd  = 0;
         hppa_port_pci_data = 0;
