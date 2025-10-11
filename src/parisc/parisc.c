@@ -536,7 +536,7 @@ int DEV_is_storage_device(hppa_device_t *dev)
     BUG_ON(!dev);
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_STORAGE_SCSI);
-    return ((dev->iodc->type & 0x1f) == HPHW_A_DMA);
+    return ((dev->iodc->type & 0x1f) == HPHW_FIO);
 }
 
 int DEV_is_serial_device(hppa_device_t *dev)
@@ -545,7 +545,7 @@ int DEV_is_serial_device(hppa_device_t *dev)
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_COMMUNICATION_SERIAL ||
                 dev->pci->class == PCI_CLASS_COMMUNICATION_MULTISERIAL);
-    return ((dev->iodc->type & 0x1f) == HPHW_FIO);
+    return ((dev->iodc->type & 0x1f) == HPHW_FIO); // HPHW_CIO ??
 }
 
 int HPA_is_serial_device(unsigned long hpa)
