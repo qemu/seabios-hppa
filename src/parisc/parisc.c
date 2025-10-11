@@ -1190,9 +1190,9 @@ int __VISIBLE parisc_iodc_ENTRY_IO(unsigned int *arg)
     }
 
     if (1 &&
-            (((DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa)) && option == ENTRY_IO_COUT) ||
-             ((DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa)) && option == ENTRY_IO_CIN) ||
-             ((DEV_is_storage_device(dev) && option == ENTRY_IO_BOOTIN && !(pdc_debug & DEBUG_BOOT_IO)))) ) {
+            (( option == ENTRY_IO_COUT   && (DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa))) ||
+             ( option == ENTRY_IO_CIN    && (DEV_is_serial_device(dev) || HPA_is_graphics_device(hpa))) ||
+             ((option == ENTRY_IO_BOOTIN && !(pdc_debug & DEBUG_BOOT_IO)) && DEV_is_storage_device(dev))) ) {
         /* avoid debug messages */
     } else {
         iodc_log_call(arg, __FUNCTION__);
