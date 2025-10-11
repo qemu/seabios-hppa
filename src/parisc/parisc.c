@@ -186,7 +186,24 @@ extern long sr_hashing_enabled(void);
 
 #define MIN_RAM_SIZE	(16*1024*1024) // 16 MB
 
-#define HPHW_NPROC      0
+/* HP hardware identifiers */
+#define HPHW_NPROC     0
+#define HPHW_MEMORY    1
+#define HPHW_B_DMA     2
+#define HPHW_OBSOLETE  3
+#define HPHW_A_DMA     4
+#define HPHW_A_DIRECT  5
+#define HPHW_OTHER     6
+#define HPHW_BCPORT    7
+#define HPHW_CIO       8
+#define HPHW_CONSOLE   9
+#define HPHW_FIO       10
+#define HPHW_BA        11
+#define HPHW_IOA       12
+#define HPHW_BRIDGE    13
+#define HPHW_FABRIC    14
+#define HPHW_MC	       15
+#define HPHW_FAULTY    31
 
 #define CPU_HPA_IDX(i)  (F_EXTEND(CPU_HPA) + (i)*0x1000) /* CPU_HPA of CPU#i */
 
@@ -519,7 +536,7 @@ int DEV_is_storage_device(hppa_device_t *dev)
     BUG_ON(!dev);
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_STORAGE_SCSI);
-    return ((dev->iodc->type & 0x1f) == 0x04); /* HPHW_A_DMA */
+    return ((dev->iodc->type & 0x1f) == HPHW_A_DMA);
 }
 
 int DEV_is_serial_device(hppa_device_t *dev)
@@ -528,7 +545,7 @@ int DEV_is_serial_device(hppa_device_t *dev)
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_COMMUNICATION_SERIAL ||
                 dev->pci->class == PCI_CLASS_COMMUNICATION_MULTISERIAL);
-    return ((dev->iodc->type & 0x1f) == 0x0a); /* HPHW_FIO */
+    return ((dev->iodc->type & 0x1f) == HPHW_FIO);
 }
 
 int HPA_is_serial_device(unsigned long hpa)
@@ -546,7 +563,7 @@ int DEV_is_network_device(hppa_device_t *dev)
     BUG_ON(!dev);
     if (dev->pci)
         return (dev->pci->class == PCI_CLASS_NETWORK_ETHERNET);
-    return ((dev->iodc->type & 0x1f) == 0x0a); /* HPHW_FIO */
+    return ((dev->iodc->type & 0x1f) == HPHW_FIO);
 }
 
 static int HPA_is_LASI_keyboard(unsigned long hpa)
