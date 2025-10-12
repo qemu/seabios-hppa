@@ -379,9 +379,13 @@ struct machine_info {
 #include "parisc/c3700.h"
 #include "parisc/machine-create.h"
 
+#if !defined(__LP64__)
 #define MACHINE	715
 #include "parisc/715_64.h"
 #include "parisc/machine-create.h"
+#else
+#define machine_715 machine_B160L
+#endif
 
 struct machine_info *current_machine = &machine_B160L;
 
@@ -1570,8 +1574,9 @@ static int pdc_model(unsigned long *arg, unsigned long narrow_mode)
              * with old qemu versions which will try to run 64-bit instructions
              * kernel sr_disable_hash() function
              */
-            source = is_64bit_CPU() ? &current_machine->pdc_model.hversion
-                                    : &machine_B160L.pdc_model.hversion;
+            source = !is_64bit_PDC() || is_64bit_CPU() ?
+                        &current_machine->pdc_model.hversion
+                      : &machine_B160L.pdc_model.hversion;
 
             /* make sure to only copy the necessary bytes. */
             NO_COMPAT_RETURN_VALUE(ARG2);
@@ -1813,9 +1818,9 @@ static int pdc_iodc(unsigned long *arg)
         case PDC_IODC_NINIT:	/* non-destructive init - for memory */
         case PDC_IODC_DINIT:	/* destructive init */
             result[0] = 0; /* IO_STATUS */
-            result[1] = 0; /* max_spa */
-            result[2] = ram_size_low; /* max memory */
-            result[3] = 0;
+            result[1] = ram_size_low; /* max_spa = max_mem + mappable_mem */
+            result[2] = ram_size_low; /* max_memory */
+            result[3] = 0; /* mappable memory */
             return PDC_OK;
         case PDC_IODC_MEMERR:
             result[0] = 0; /* IO_STATUS */
@@ -2106,7 +2111,7 @@ static int pdc_system_map(unsigned long *arg)
     // dprintf(0, "\n\nSeaBIOS: Info: PDC_SYSTEM_MAP function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
 
     /* old machines (715 is Snake type) do not support PDC_SYSTEM_MAP */
-    if (current_machine == &machine_715)
+    if (!is_64bit_PDC() && current_machine != &machine_B160L)
         return PDC_BAD_OPTION;
 
     switch (option) {
@@ -3271,9 +3276,9 @@ void __VISIBLE start_parisc_firmware(void)
 
     /* which machine shall we emulate? */
     str = romfile_loadfile("/etc/hppa/machine", NULL);
-    if (!str)
+    if (!is_64bit_PDC() && !str)
         str = "B160L";  /* default machine */
-    if (strcmp(str, "B160L") == 0) {
+    if (!is_64bit_PDC() && strcmp(str, "B160L") == 0) {
         has_astro = 0; /* No Astro */
         current_machine = &machine_B160L;
         pci_hpa = DINO_HPA;
@@ -3286,8 +3291,8 @@ void __VISIBLE start_parisc_firmware(void)
         mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
         mem_kbd_sti_boot.hpa = lasi_hpa + LASI_PS2;
         mem_boot_boot.hpa = lasi_hpa + LASI_SCSI;
-    }
-    if (strcmp(str, "C3700") == 0) {
+    } else
+    if (is_64bit_PDC() && strcmp(str, "C3700") == 0) {
         has_astro = 1;
         current_machine = &machine_C3700;
         pci_hpa = (unsigned long) ELROY0_BASE_HPA;
@@ -3302,8 +3307,8 @@ void __VISIBLE start_parisc_firmware(void)
         mem_cons_boot.hpa = 0;
         mem_kbd_boot.hpa = 0;
         mem_kbd_sti_boot.hpa = 0;
-    }
-    if (strcmp(str, "715") == 0) {
+    } else
+    if (!is_64bit_PDC() && strcmp(str, "715") == 0) {
         has_astro = 0; /* No Astro */
         current_machine = &machine_715;
         pci_hpa = 0; /* No PCI bus */
@@ -3316,7 +3321,8 @@ void __VISIBLE start_parisc_firmware(void)
         mem_kbd_boot.hpa = lasi_hpa + LASI_UART;
         mem_kbd_sti_boot.hpa = lasi_hpa + LASI_PS2;
         mem_boot_boot.hpa = lasi_hpa + LASI_SCSI;
-    }
+    } else
+        BUG_ON(1);
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
 
