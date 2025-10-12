@@ -93,7 +93,7 @@ ncr710_scsi_process_op(struct disk_op_s *op)
     u8 msgin = 0xff;
 
     u32 script[] = {
-        0x40000000 | target << 16,        /* SELECT target */
+        0x40000000 | (1 << target) << 16, /* SELECT target */
         0x00000000,
         0x02000010,                        /* Send CDB (16 bytes) */
         (u32)MAKE_FLATPTR(GET_SEG(SS), cdbcmd),
@@ -158,15 +158,15 @@ ncr710_scsi_process_op(struct disk_op_s *op)
             }
         }
 
-        if ((sstat0 & ~0x80) || (sstat1 & ~0x04)) {
-            if ((sstat0 & ~0x84) || (sstat1 & ~0x04)) {
-                DBG("NCR710: SCSI error, SSTAT0=0x%02x, SSTAT1=0x%02x\n", sstat0, sstat1);
-                goto fail;
-            }
+        if (sstat0 & 0x20) {
+            goto fail;
         }
-
-        if (sstat1 & 0x04) {
-            DBG("NCR710: Target selection failed (no device at target %d)\n", target);
+        if (sstat0 & ~0xA0) {
+            DBG("NCR710: SCSI error, SSTAT0=0x%02x, SSTAT1=0x%02x\n", sstat0, sstat1);
+            goto fail;
+        }
+        if (sstat1 & 0x1B) {
+            DBG("NCR710: SCSI error, SSTAT0=0x%02x, SSTAT1=0x%02x\n", sstat0, sstat1);
             goto fail;
         }
 
