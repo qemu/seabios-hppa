@@ -334,6 +334,21 @@ static struct pdc_module_path mod_path_emulated_drives = {
     .layers = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 } // first two layer entries get replaced
 };
 
+const char *drive_name(struct drive_s *drive)
+{
+    switch (drive->type) {
+    case DTYPE_ATA:
+    case DTYPE_ATA_ATAPI:       return "ATA";
+    case DTYPE_LSI_SCSI:
+    case DTYPE_ESP_SCSI:
+    case DTYPE_MEGASAS:
+    case DTYPE_PVSCSI:
+    case DTYPE_MPT_SCSI:        return "FWSCSI";
+    case DTYPE_NCR710_SCSI:     return "SCSI";
+    default:                    return "Unkown";
+    }
+}
+
 /********************************************************
  * FIRMWARE IO Dependent Code (IODC) HANDLER
  ********************************************************/
@@ -2870,7 +2885,7 @@ again2:
         printf("Unknown command, please try again.\n\n");
         goto again2;
     }
-    // from here on we handle "BOOT PRI/ALT/FWSCSI.x"
+    // from here on we handle "BOOT PRI/ALT/SCSI.x"
     c = input;
     while (*c && (*c != ' '))   c++;    // search space
     // preset with default boot target (this is same as "BOOT PRI"
@@ -2886,7 +2901,7 @@ again2:
     }
 
     if (!parisc_get_scsi_target(&boot_drive, scsi_boot_target)) {
-        printf("No FWSCSI.%d.0 device available for boot. Please try again.\n\n",
+        printf("No SCSI.%d.0 device available for boot. Please try again.\n\n",
             scsi_boot_target);
         goto again2;
     }
@@ -3537,12 +3552,12 @@ void __VISIBLE start_parisc_firmware(void)
     // search boot devices
     find_initial_parisc_boot_drives(&parisc_boot_harddisc, &parisc_boot_cdrom);
 
-    printf("  Primary boot path:    FWSCSI.%d.%d\n"
-           "  Alternate boot path:  FWSCSI.%d.%d\n"
+    printf("  Primary boot path:    %s.%d.%d\n"
+           "  Alternate boot path:  %s.%d.%d\n"
            "  Console path:         %s\n"
            "  Keyboard path:        %s\n\n",
-            parisc_boot_harddisc->target, parisc_boot_harddisc->lun,
-            parisc_boot_cdrom->target, parisc_boot_cdrom->lun,
+            drive_name(parisc_boot_harddisc), parisc_boot_harddisc->target, parisc_boot_harddisc->lun,
+            drive_name(parisc_boot_cdrom),    parisc_boot_cdrom->target, parisc_boot_cdrom->lun,
             hpa_device_name(PAGE0->mem_cons.hpa, 1),
             hpa_device_name(PAGE0->mem_kbd.hpa, 0));
 
