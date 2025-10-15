@@ -318,6 +318,9 @@ ncr710_scsi_setup(void)
         return;
     if (!CONFIG_PARISC || sizeof(long) != 4 || !lasi_hpa)
         return;
+    /* check for PARISC device ID: (HPHW_FIO << 24) | LASI_710_SVERSION */
+    if (CONFIG_PARISC && inl(lasi_hpa + 0x6000) != 0x5000082)
+        return;
     DBG("Initializing NCR 53c710 SCSI controllers\n");
     init_ncr710_scsi(lasi_hpa + 0x6000);
 }
