@@ -1614,14 +1614,17 @@ static int pdc_model(unsigned long *arg, unsigned long narrow_mode)
                 case 0: /* return CPU0 version */
                     result[0] = current_machine->pdc_version;
                     return PDC_OK;
-                case 1: /* return PDC version */
-                    /* defaults: 715 has 0x16, B160L has 0x11, C3700 has 0x20 */
-                    result[0] = (is_64bit_CPU()) ? 0x20 : 0x016;
+                case 1: /* return COPRO version or PDC version */
+                    /* 32bit CPUs: 715 has 0x16, B160L has 0x11 */
+                    if (!is_64bit_CPU())
+                            result[0] = SEABIOS_HPPA_VERSION << 4 | 0x00;
+                    else    /* c3000:9, c8000:0, rp3440:0x23 */
+                            result[0] = 9;
                     return PDC_OK;
-                case 2: /* return PDC PAT(?) version */
+                case 2: /* return PDC version */
                     if (!is_64bit_CPU())
                         break;
-                    result[0] = 0x20;
+                    result[0] = SEABIOS_HPPA_VERSION << 6 | 0x00;
                     return PDC_OK;
             }
             return -4; // invalid c_index
