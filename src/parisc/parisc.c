@@ -1624,7 +1624,10 @@ static int pdc_model(unsigned long *arg, unsigned long narrow_mode)
                 case 2: /* return PDC version */
                     if (!is_64bit_CPU())
                         break;
-                    result[0] = SEABIOS_HPPA_VERSION << 6 | 0x00;
+                    if (pat_disabled())
+                        result[0] = SEABIOS_HPPA_VERSION << 4 | 0x00; // c3700
+                    else
+                        result[0] = SEABIOS_HPPA_VERSION << 6 | 0x00; // c8000+
                     return PDC_OK;
             }
             return -4; // invalid c_index
