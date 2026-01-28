@@ -56,14 +56,17 @@ union {
 # define cpu_bit_width      64
 # define is_64bit_PDC()     1      /* 64-bit PDC */
 # define is_snake           0
+bool _pat_disabled = true;
+#define pat_disabled()      _pat_disabled
 #else
 char cpu_bit_width;
 # define is_64bit_PDC()     0      /* 32-bit PDC */
 bool is_snake;
+#define _pat_disabled       is_snake /* avoids ifdef */
+#define pat_disabled()      1
 #endif
 
 #define is_64bit_CPU()     (cpu_bit_width == 64)  /* 64-bit CPU? */
-#define pat_disabled()     1    // !is_64bit_PDC()
 
 /* running 64-bit PDC, but called from 32-bit app */
 #define is_compat_mode()  (is_64bit_PDC() && ((psw_defaults & PDC_PSW_WIDE_BIT) == 0))
@@ -75,6 +78,9 @@ bool is_snake;
 
 /* Should PDC be very strict in regard to compatibility? */
 #define PDC_VERY_STRICT 0
+
+#define DEFAULT_CELL_NUM        0
+#define DEFAULT_CELL_LOC        1
 
 u8 BiosChecksum;
 
@@ -377,7 +383,7 @@ static hppa_device_t *find_hpa_device(unsigned long hpa);
 #define CONCAT(a, b) CONCAT2(a, b)
 
 struct machine_info {
-        char			pdc_modelstr[16];
+        char			pdc_modelstr[2][20];
         struct pdc_model 	pdc_model;
         int			pdc_version;
         int			pdc_cpuid;
@@ -401,7 +407,11 @@ struct machine_info {
 #define MACHINE	715
 #include "parisc/715_64.h"
 #include "parisc/machine-create.h"
+#define machine_A400 machine_B160L
 #else
+#define MACHINE	A400
+#include "parisc/a400.h"
+#include "parisc/machine-create.h"
 #define machine_715 machine_B160L
 #endif
 
@@ -438,6 +448,7 @@ static const char *hpa_name(unsigned long hpa)
     DO1(LASI_GFX_HPA)
     DO1(ASTRO_HPA)
     DO1(ASTRO_MEMORY_HPA)
+    DO1(ASTRO_MEMORY_HPA_A400)
     DO1(ELROY0_HPA)
     DO1(ELROY2_HPA)
     DO1(ELROY8_HPA)
@@ -1486,6 +1497,8 @@ static const char *pdc_name(unsigned long num)
         DO(PDC_PAT_CHASSIS_LOG)
         DO(PDC_PAT_CPU)
         DO(PDC_PAT_EVENT)
+        DO(PDC_PAT_IO)
+        DO(PDC_PAT_MEM)
         DO(PDC_PAT_PD)
         DO(PDC_LINK)
 #undef DO
@@ -1578,7 +1591,7 @@ static int pdc_pim(unsigned long *arg)
 
 static int pdc_model(unsigned long *arg, unsigned long narrow_mode)
 {
-    const char *model_str = current_machine->pdc_modelstr;
+    const char *model_str = current_machine->pdc_modelstr[0];
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
     unsigned int *result_narrow = (unsigned int *)ARG2;
@@ -1632,6 +1645,9 @@ static int pdc_model(unsigned long *arg, unsigned long narrow_mode)
             }
             return -4; // invalid c_index
         case PDC_MODEL_SYSMODEL:
+            model_str = current_machine->pdc_modelstr[ARG3 == OS_ID_MPEXL ? 1 : 0];
+            if (model_str[0] == 0)
+                return PDC_INVALID_ARG;
             result[0] = strlen(model_str);
             strtcpy((char *)ARG4, model_str, result[0] + 1);
             return PDC_OK;
@@ -2006,7 +2022,7 @@ static int pdc_block_tlb(unsigned long *arg)
     int ret;
 
     /* Block TLB is only supported on 32-bit CPUs */
-    if (is_64bit_CPU())
+    if (is_64bit_PDC() || is_64bit_CPU())
         return PDC_BAD_PROC;
 
     asm(
@@ -2137,8 +2153,8 @@ static int pdc_system_map(unsigned long *arg)
 
     // dprintf(0, "\n\nSeaBIOS: Info: PDC_SYSTEM_MAP function %ld ARG3=%x ARG4=%x ARG5=%x\n", option, ARG3, ARG4, ARG5);
 
-    /* old machines (715 is Snake type) do not support PDC_SYSTEM_MAP */
-    if (is_snake)
+    /* old machines (715 is Snake type) and PAT-boxes (A400) do not support PDC_SYSTEM_MAP */
+    if (is_snake || !pat_disabled())
         return PDC_BAD_PROC; // PDC_BAD_OPTION is not sufficient!
 
     switch (option) {
@@ -2401,16 +2417,93 @@ static int pdc_pat_cell(unsigned long *arg)
 {
     unsigned long option = ARG1;
     struct pdc_pat_cell_num *cell_info = (void *)ARG2;
+    unsigned long *result = (unsigned long *)ARG2;
+    struct pdc_pat_cell_mod_maddr_block *mb = (void *)ARG6;
+    unsigned long hpa_index;
+    hppa_device_t *dev;
 
     switch (option) {
         case PDC_PAT_CELL_GET_NUMBER:
-            // cell_info->cell_num = cell_info->cell_loc = 0;
-            memset(cell_info, 0, 32*sizeof(long long));
+            cell_info->cell_num = DEFAULT_CELL_NUM;
+            cell_info->cell_loc = DEFAULT_CELL_LOC;
             return PDC_OK;
         case PDC_PAT_CELL_GET_INFO:
             return PDC_BAD_OPTION; /* optional on single-cell machines */
         case PDC_PAT_CELL_MODULE:
-            return PDC_BAD_OPTION;
+            if (ARG3 != DEFAULT_CELL_LOC)
+                return PDC_INVALID_ARG;
+            hpa_index = ARG4;
+            // PA_VIEW = ARG5
+            dev = find_hppa_device_by_index(0, hpa_index, 0); /* root devices */
+            if (!dev)
+                return PDC_NE_MOD; // Module not found
+
+            if (1) {
+                printf("PDC_FIND_MODULE dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
+                print_mod_path(dev->mod_path, 0);
+                if (dev->pci)
+                    printf("PCI %pP ", dev->pci);
+                printf("\n");
+            }
+
+#if 0
+PAT INDEX: 0: cba 0xfffffffffffa0000, mod_info 0x100000000000001, mod_location   0xff01ff11, mod: 0xa0ff0000 0x0 0x0
+PAT INDEX: 1: cba 0xfffffffffed08001, mod_info 0x200000000000010, mod_location   0xffffff71, mod: 0x40000000 0x0 0x0
+PAT INDEX: 2: cba 0xfffffffffed00001, mod_info 0x32f020000000008, mod_location   0xffffff82, mod: 0x0 0x6 0xc000000000000005
+PAT INDEX: 3: cba 0xfffffffffed30001, mod_info 0x400000000000002, mod_location 0xffff00ff83, mod: 0x0 0x4 0x8000000000000000
+PAT INDEX: 4: cba 0xfffffffffed34001, mod_info 0x400000000000002, mod_location 0xffff02ff83, mod: 0x0 0x4 0x8000000000000000
+PAT INDEX: 5: cba 0xfffffffffed38001, mod_info 0x400000000000002, mod_location 0xffff04ff83, mod: 0x0 0x4 0x8000000000000000
+PAT INDEX: 6: cba 0xfffffffffed3c001, mod_info 0x400000000000002, mod_location 0xffff06ff83, mod: 0x0 0x4 0x8000000000000000
+Found devices:
+1. Crescendo DC- 440 [160] at 0xfffffffffffa0000 { type:0, hv:0x5d6, sv:0x4, rev:0x0 }
+2. Memory [8] at 0xfffffffffed08000 { type:1, hv:0x9b, sv:0x9, rev:0x0 }
+3. Astro BC Runway Port [0] at 0xfffffffffed00000 { type:12, hv:0x582, sv:0xb, rev:0x0 }
+4. Elroy PCI Bridge [0:0] at 0xfffffffffed30000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
+5. Elroy PCI Bridge [0:2] at 0xfffffffffed34000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
+6. Elroy PCI Bridge [0:4] at 0xfffffffffed38000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
+7. Elroy PCI Bridge [0:6] at 0xfffffffffed3c000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
+#endif
+
+            result[0] = sizeof(*mb);
+            memset(mb, 0, sizeof(*mb));
+            mb->cba = dev->hpa; //  for PDC_IODC
+	    if ((dev->iodc->type & 0x1f) != HPHW_NPROC) // CPU
+		mb->cba |= 1;	/* endianess bit */
+            mb->mod_path = dev->mod_path->path;
+	// HELGE
+	    switch (dev->iodc->type & 0x1f) {
+            case HPHW_NPROC:        /* CPU */
+		mb->mod_info = (unsigned long) 0x100000000000001UL;
+		mb->mod_location = 0xff01ff11;
+		mb->mod[0] = (dev->mod_path->path.mod << 24) | (0xff << 16);
+		break;
+            case HPHW_MEMORY:
+		mb->mod_info = (unsigned long) 0x200000000000010UL;
+		mb->mod_location = 0xffffff71;
+		mb->mod[0] = 0x40000000;
+		break;
+            case HPHW_IOA: /* Astro BC Runway Port */
+		mb->mod_info = (unsigned long) 0x32f020000000008UL;
+		mb->mod_location = 0xffffff82;
+		mb->mod[0] = 0x0;
+		mb->mod[1] = 0x6;
+		mb->mod[2] = (unsigned long) 0xc000000000000005;
+		break;
+            case HPHW_BRIDGE: /* Elroy PCI bridge */
+		mb->mod_info = (unsigned long) 0x400000000000002UL;
+		mb->mod_location = (unsigned long) 0xffff00ff83;
+		mb->mod_location |= dev->mod_path->path.mod << 16;
+		mb->mod[0] = 0x0;
+		mb->mod[1] = 0x4;
+		mb->mod[2] = (unsigned long) 0x8000000000000000UL;
+		break;
+	     default:
+                dprintf(1, "pdc_pat_cell unknown module %d\n", dev->iodc->type & 0x1f);
+                return PDC_INVALID_ARG;
+            }
+            if (1)
+                dprintf(1, "PDC_FIND_MODULE %lx %ld %ld \n", result[0], result[1],result[2]);
+            return PDC_OK;
         default:
             break;
     }
@@ -2493,9 +2586,11 @@ static int pdc_pat_pd(unsigned long *arg)
             return PDC_OK;
 
         case PDC_PAT_PD_GET_PDC_INTERF_REV:
-            result[0] = 5;  // legacy_rev
-            result[1] = 6;  // pat_rev
+            result[0] = SEABIOS_HPPA_VERSION;  // legacy_rev
+            result[1] = SEABIOS_HPPA_VERSION << 6 | 0x00;  // pat_rev
             result[2] = PDC_PAT_CAPABILITY_BIT_SIMULTANEOUS_PTLB;  // pat_cap
+            // C3700: 0x05, pat_rev 0x006
+            // A400:  0x24, pat_rev 0x201, pdc_cap 0x32,
             return PDC_OK;
         default:
             break;
@@ -2503,6 +2598,29 @@ static int pdc_pat_pd(unsigned long *arg)
     dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_PD function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
+
+static int pdc_pat_io(unsigned long *arg)
+{
+    unsigned long option = ARG1;
+    unsigned long *result = (unsigned long *)ARG2;
+    unsigned long cell = ARG3;
+
+    switch (option) {
+        case PDC_PAT_IO_GET_PCI_ROUTING_TABLE_SIZE:
+            if (cell != DEFAULT_CELL_NUM)
+                return PDC_INVALID_ARG;
+            result[0] = irt_table_entries;
+            return PDC_OK;
+        case PDC_PAT_IO_GET_PCI_ROUTING_TABLE:
+            if (cell != DEFAULT_CELL_NUM)
+                return PDC_INVALID_ARG;
+            memcpy(result, irt_table, irt_table_entries * 16);
+            return PDC_OK;
+    }
+    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_IO function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
+    return PDC_BAD_OPTION;
+}
+
 
 static int pdc_pat_mem(unsigned long *arg)
 {
@@ -2669,6 +2787,11 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
             if (pat_disabled())
                 return PDC_BAD_PROC;
             return pdc_pat_pd(arg);
+
+        case PDC_PAT_IO:
+            if (pat_disabled())
+                return PDC_BAD_PROC;
+            return pdc_pat_io(arg);
 
         case PDC_PAT_MEM:
             if (pat_disabled())
@@ -3330,6 +3453,23 @@ void __VISIBLE start_parisc_firmware(void)
     } else
     if (is_64bit_PDC() && strcmp(str, "C3700") == 0) {
         current_machine = &machine_C3700;
+        pci_hpa = (unsigned long) ELROY0_BASE_HPA;
+        hppa_port_pci_cmd  = pci_hpa + 0x040;
+        hppa_port_pci_data = pci_hpa + 0x048;
+        // but report back ASTRO_HPA
+        // pci_hpa = (unsigned long) ASTRO_HPA;
+        lasi_hpa = 0;
+        /* no serial port for now, will find later */
+        port_serial_1 = 0;
+        port_serial_2 = 0;
+        mem_cons_boot.hpa = 0;
+        mem_kbd_boot.hpa = 0;
+        mem_kbd_sti_boot.hpa = 0;
+    } else
+    if (is_64bit_PDC() && strcmp(str, "A400") == 0) {
+        current_machine = &machine_A400;
+        _pat_disabled = false; /* allow PAT */
+        enable_OS64 &= ~PDC_MODEL_OS32; /* do not allow 32-bit OS */
         pci_hpa = (unsigned long) ELROY0_BASE_HPA;
         hppa_port_pci_cmd  = pci_hpa + 0x040;
         hppa_port_pci_data = pci_hpa + 0x048;
