@@ -166,7 +166,7 @@ static struct pdc_system_map_mod_info mod_info_hpa_fffffffffed34000 = {
         .add_addrs = 0x0,
 };
 static struct pdc_module_path mod_path_hpa_fffffffffed34000 = {
-        .path = { .flags = 0xff, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0x0 }, .mod = 0x2 }
+        .path = { .flags = 0xff, .bc = { 0xff, 0xff, 0xff, 0xff, 0xff, 0x0 }, .mod = 0x1 /* 0x2 */ }
 };
 static struct pdc_iodc iodc_data_hpa_fffffffffed34000 = {
         .hversion_model = 0x0078,
@@ -248,31 +248,31 @@ static struct pdc_iodc iodc_data_hpa_fffffffffed3c000 = {
                 .mod_path = &mod_path_hpa_fffffffffed08000,\
                 .num_addr = HPA_fffffffffed08000_num_addr,\
                 .add_addr = { HPA_fffffffffed08000_add_addr } },\
-        {       .hpa = 0xfffffffffed00000,\
+        {       .hpa = ASTRO_HPA  /* 0xfffffffffed00000 */ ,\
                 .iodc = &iodc_data_hpa_fffffffffed00000,\
                 .mod_info = &mod_info_hpa_fffffffffed00000,\
                 .mod_path = &mod_path_hpa_fffffffffed00000,\
                 .num_addr = HPA_fffffffffed00000_num_addr,\
                 .add_addr = { HPA_fffffffffed00000_add_addr } },\
-        {       .hpa = 0xfffffffffed30000,\
+        {       .hpa = ELROY0_HPA  /* 0xfffffffffed30000 */ ,\
                 .iodc = &iodc_data_hpa_fffffffffed30000,\
                 .mod_info = &mod_info_hpa_fffffffffed30000,\
                 .mod_path = &mod_path_hpa_fffffffffed30000,\
                 .num_addr = HPA_fffffffffed30000_num_addr,\
                 .add_addr = { HPA_fffffffffed30000_add_addr } },\
-        {       .hpa = 0xfffffffffed34000,\
+        {       .hpa = ELROY2_HPA  /* XXX 0xfffffffffed34000 */ ,\
                 .iodc = &iodc_data_hpa_fffffffffed34000,\
                 .mod_info = &mod_info_hpa_fffffffffed34000,\
                 .mod_path = &mod_path_hpa_fffffffffed34000,\
                 .num_addr = HPA_fffffffffed34000_num_addr,\
                 .add_addr = { HPA_fffffffffed34000_add_addr } },\
-        {       .hpa = 0xfffffffffed38000,\
+        {       .hpa = ELROY8_HPA  /* 0xfffffffffed38000 */,\
                 .iodc = &iodc_data_hpa_fffffffffed38000,\
                 .mod_info = &mod_info_hpa_fffffffffed38000,\
                 .mod_path = &mod_path_hpa_fffffffffed38000,\
                 .num_addr = HPA_fffffffffed38000_num_addr,\
                 .add_addr = { HPA_fffffffffed38000_add_addr } },\
-        {       .hpa = 0xfffffffffed3c000,\
+        {       .hpa = ELROYc_HPA  /* 0xfffffffffed3c000 */,\
                 .iodc = &iodc_data_hpa_fffffffffed3c000,\
                 .mod_info = &mod_info_hpa_fffffffffed3c000,\
                 .mod_path = &mod_path_hpa_fffffffffed3c000,\

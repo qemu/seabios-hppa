@@ -24,6 +24,8 @@
 #include "string.h" // memset
 #include "util.h" // pci_setup
 #include "x86.h" // outb
+#include "parisc/pdc.h"  // PDC
+#include "parisc/pdcpat.h"  // PDC PAT
 
 #define PCI_DEVICE_MEM_MIN    (1<<16)  // 64k
 #define PCI_BRIDGE_MEM_MIN    (1<<21)  // 2M == hugepage size
@@ -609,6 +611,91 @@ unsigned long add_lmmio_directed_range(unsigned long size, int rope)
 #endif /* CONFIG_PARISC */
     return -1UL;
 }
+
+#define ELROY_NUM               4 /* # of Elroys */
+// static const int elroy_hpa_offsets[ELROY_NUM] = {
+//             0x30000, 0x32000, 0x38000, 0x3c000 };
+static const char elroy_rope_nr[ELROY_NUM] = {
+            0, 1, 4, 6 }; /* busnum path, e.g. [10:6] */
+
+int pathnum_to_pcibus(int pathnum) /* e.g. 6 from [10:6] */
+{
+    int i;
+    for (i = 0; i < ELROY_NUM; i++)
+        if (elroy_rope_nr[i] == pathnum)
+            return i;
+    return 0;   // failure, but return 0
+}
+
+void generate_pcitable(int view, int pathnum, unsigned long *table)
+{
+    struct { unsigned long type, start, end; } p, io, *dest;
+    #define ENAB ((unsigned long)0x8000000000000000)
+    #define HBA_PORT_SPACE_BITS       16
+    #define HBA_PORT_SPACE_SIZE       (1UL << HBA_PORT_SPACE_BITS)
+    #define HBA_PORT_BASE(h)  ((h) << HBA_PORT_SPACE_BITS)
+
+    unsigned long base, len, size;
+    int num = 0;
+    int pcibus = pathnum_to_pcibus(pathnum);
+    dest = (void *) &table[2];
+
+    /* bus number */
+    p.type = io.type = ENAB | PAT_PBNUM;
+    p.start = io.start = pcibus;
+    p.end   = io.end   = pcibus;
+    *dest++ = (view == PA_VIEW) ? p : io;
+    num++;
+
+    /* LMMIO */
+    base = LMMIO_DIST_BASE_ADDR;
+    len  = LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
+    p.type = io.type = ENAB | PAT_LMMIO;
+    io.start = base + pathnum * len;
+    io.end   = io.start + len - 1;
+    p.start = F_EXTEND(io.start);
+    p.end   = p.start + len - 1;
+    *dest++ = (view == PA_VIEW) ? p : io;
+    num++;
+
+    /* GMMIO - not supported yet */
+    // p.type = io.type = ENAB | PAT_GMMIO;
+
+    /* PAT_PIOP */
+    // may need adjustment for 64-bit PAT
+    p.type = io.type = ENAB | PAT_PIOP;
+    size = IOS_DIST_BASE_SIZE / ROPES_PER_IOC;
+    io.start = pathnum * size | HBA_PORT_BASE(pcibus);
+    io.end   = io.start + (0xe000 ^ (HBA_PORT_SPACE_SIZE - 1));
+    p.start  = F_EXTEND(io.start);
+    p.end    = F_EXTEND(io.end);
+    *dest++ = (view == PA_VIEW) ? p : io;
+    num++;
+
+    table[0] = 0;
+    table[1] = num;     /* number of entries */
+}
+
+
+
+#if 0
+charon:
+Elroy version TR4.0 (0x5) found at 0xfffffffffed30000
+PA-count 4
+IO-count 4
+PA #0 : TYPE 0x8000000000000000,  start 0x00000000, end 0x00000007
+IO #0 : TYPE 0x8000000000000000,  start 0x00000000, end 0x00000007
+PA #1 : TYPE 0x8000000000000001,  start 0xfffffffff8000000, end 0xfffffffff87fffff
+IO #1 : TYPE 0x8000000000000001,  start 0xf8000000, end 0xf87fffff
+PA #2 : TYPE 0x8000000000000002,  start 0xfffffff804000000, end 0xfffffff87fffffff
+IO #2 : TYPE 0x8000000000000002,  start 0xf804000000, end 0xf87fffffff
+PA #3 : TYPE 0x8000000000000004,  start 0xfffffff800000000, end 0xfffffff803ffffff
+IO #3 : TYPE 0x8000000000000004,  start 0xf800000000, end 0xf803ffffff
+LBA 0:0: PCI host bridge to bus 0000:00
+pci_bus 0000:00: root bus resource [io  0x0000-0xffff]
+pci_bus 0000:00: root bus resource [mem 0xfffffffff8000000-0xfffffffff87fffff] (bus address [0xf8000000-0xf87fffff])
+pci_bus 0000:00: root bus resource [bus 00-07]
+#endif
 
 static const struct pci_device_id pci_platform_tbl[] = {
     PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_82441,

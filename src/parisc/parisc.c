@@ -2413,6 +2413,8 @@ static int pdc_initiator(unsigned long *arg)
     return PDC_BAD_OPTION;
 }
 
+void generate_pcitable(int view, int pathnum, unsigned long *table);
+
 static int pdc_pat_cell(unsigned long *arg)
 {
     unsigned long option = ARG1;
@@ -2420,6 +2422,7 @@ static int pdc_pat_cell(unsigned long *arg)
     unsigned long *result = (unsigned long *)ARG2;
     struct pdc_pat_cell_mod_maddr_block *mb = (void *)ARG6;
     unsigned long hpa_index;
+    int view;   /* PA_VIEW or IO_VIEW */
     hppa_device_t *dev;
 
     switch (option) {
@@ -2433,7 +2436,7 @@ static int pdc_pat_cell(unsigned long *arg)
             if (ARG3 != DEFAULT_CELL_LOC)
                 return PDC_INVALID_ARG;
             hpa_index = ARG4;
-            // PA_VIEW = ARG5
+            view = ARG5;
             dev = find_hppa_device_by_index(0, hpa_index, 0); /* root devices */
             if (!dev)
                 return PDC_NE_MOD; // Module not found
@@ -2471,33 +2474,31 @@ Found devices:
 		mb->cba |= 1;	/* endianess bit */
             mb->mod_path = dev->mod_path->path;
 	// HELGE
-	    switch (dev->iodc->type & 0x1f) {
+            switch (dev->iodc->type & 0x1f) {
             case HPHW_NPROC:        /* CPU */
-		mb->mod_info = (unsigned long) 0x100000000000001UL;
-		mb->mod_location = 0xff01ff11;
-		mb->mod[0] = (dev->mod_path->path.mod << 24) | (0xff << 16);
-		break;
+                mb->mod_info = (unsigned long) 0x100000000000001UL;
+                mb->mod_location = 0xff01ff11;
+                mb->mod[0] = (dev->mod_path->path.mod << 24) | (0xff << 16);
+                break;
             case HPHW_MEMORY:
-		mb->mod_info = (unsigned long) 0x200000000000010UL;
-		mb->mod_location = 0xffffff71;
-		mb->mod[0] = 0x40000000;
-		break;
+                mb->mod_info = (unsigned long) 0x200000000000010UL;
+                mb->mod_location = 0xffffff71;
+                mb->mod[0] = 0x40000000;
+                break;
             case HPHW_IOA: /* Astro BC Runway Port */
-		mb->mod_info = (unsigned long) 0x32f020000000008UL;
-		mb->mod_location = 0xffffff82;
-		mb->mod[0] = 0x0;
-		mb->mod[1] = 0x6;
-		mb->mod[2] = (unsigned long) 0xc000000000000005;
-		break;
+                mb->mod_info = (unsigned long) 0x32f020000000008UL;
+                mb->mod_location = 0xffffff82;
+                mb->mod[0] = 0x0;
+                mb->mod[1] = 0x6;
+                mb->mod[2] = (unsigned long) 0xc000000000000005;
+                break;
             case HPHW_BRIDGE: /* Elroy PCI bridge */
-		mb->mod_info = (unsigned long) 0x400000000000002UL;
-		mb->mod_location = (unsigned long) 0xffff00ff83;
-		mb->mod_location |= dev->mod_path->path.mod << 16;
-		mb->mod[0] = 0x0;
-		mb->mod[1] = 0x4;
-		mb->mod[2] = (unsigned long) 0x8000000000000000UL;
-		break;
-	     default:
+                mb->mod_info = (unsigned long) 0x400000000000002UL;
+                mb->mod_location = (unsigned long) 0xffff00ff83;
+                mb->mod_location |= dev->mod_path->path.mod << 16;
+                generate_pcitable(view, dev->mod_path->path.mod, mb->mod);
+                break;
+             default:
                 dprintf(1, "pdc_pat_cell unknown module %d\n", dev->iodc->type & 0x1f);
                 return PDC_INVALID_ARG;
             }
