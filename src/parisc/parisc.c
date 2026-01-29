@@ -2006,7 +2006,7 @@ static int pdc_proc(unsigned long *arg)
             if (ARG2 != 0)
                 return PDC_BAD_PROC;
             if (pdc_debug & DEBUG_PDC)
-                printf("\nSeaBIOS: CPU%d enters rendenzvous loop.\n",
+                printf("\nSeaBIOS: CPU%d now offline (enters rendenzvous loop).\n",
                         index_of_CPU_HPA(mfctl(CPU_HPA_CR_REG)));
             /* wait until all outstanding timer irqs arrived. */
             msleep(500);
@@ -2441,7 +2441,7 @@ static int pdc_pat_cell(unsigned long *arg)
             if (!dev)
                 return PDC_NE_MOD; // Module not found
 
-            if (1) {
+            if (0) {
                 printf("PDC_FIND_MODULE dev=%p hpa=%lx ", dev, dev ? dev->hpa:0UL);
                 print_mod_path(dev->mod_path, 0);
                 if (dev->pci)
@@ -2502,13 +2502,13 @@ Found devices:
                 dprintf(1, "pdc_pat_cell unknown module %d\n", dev->iodc->type & 0x1f);
                 return PDC_INVALID_ARG;
             }
-            if (1)
-                dprintf(1, "PDC_FIND_MODULE %lx %ld %ld \n", result[0], result[1],result[2]);
+            if (0)
+                printf("PDC_FIND_MODULE %lx %ld %ld \n", result[0], result[1],result[2]);
             return PDC_OK;
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_CELL function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
+    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_CELL function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
@@ -2533,10 +2533,13 @@ static int pdc_pat_cpu(unsigned long *arg)
             result[1] = hpa;    /* location */
             result[2] = 0;      /* num siblings */
             return PDC_OK;
+        case PDC_PAT_CPU_RENDEZVOUS:
+            ARG1 = 1;
+            return pdc_proc(arg);
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_CPU OPTION %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
+    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_CPU OPTION %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
     return PDC_BAD_OPTION;
 }
 
@@ -2552,7 +2555,7 @@ static int pdc_pat_event(unsigned long *arg)
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_CPU OPTION %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
+    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_EVENT OPTION %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
     return PDC_BAD_OPTION;
 }
 
@@ -2596,7 +2599,7 @@ static int pdc_pat_pd(unsigned long *arg)
         default:
             break;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_PD function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
+    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_PD function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
@@ -2618,7 +2621,7 @@ static int pdc_pat_io(unsigned long *arg)
             memcpy(result, irt_table, irt_table_entries * 16);
             return PDC_OK;
     }
-    dprintf(0, "\n\nSeaBIOS: Unimplemented PDC_PAT_IO function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
+    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_IO function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
 }
 
