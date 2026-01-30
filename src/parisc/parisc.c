@@ -2346,7 +2346,7 @@ static void iosapic_table_setup(void)
         *p++ = IOSAPIC_HPA >> 32;
         *p++ = (u32) IOSAPIC_HPA;
         iosapic_intin++;
-        iosapic_intin &= (ELROY_IRQS - 1 );
+        iosapic_intin &= (ELROY_IRQS - 1);
     }
 }
 
@@ -2478,7 +2478,13 @@ Found devices:
             case HPHW_NPROC:        /* CPU */
                 mb->mod_info = (unsigned long) 0x100000000000001UL;
                 mb->mod_location = 0xff01ff11;
-                mb->mod[0] = (dev->mod_path->path.mod << 24) | (0xff << 16);
+                /* see IOSAPIC encoding in in astro.c in qemu: */
+                #define SWIZZLE_HPA(a) \
+                    ((((a) & 0x0ff00000) >> 4) | (((a) & 0x000ff000) << 12))
+                if (view == PA_VIEW)
+                    mb->mod[0] = SWIZZLE_HPA(dev->hpa); // for iommu, only on PAT
+                else
+                    mb->mod[0] = (dev->mod_path->path.mod << 24) | (0xff << 16);
                 break;
             case HPHW_MEMORY:
                 mb->mod_info = (unsigned long) 0x200000000000010UL;
