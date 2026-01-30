@@ -80,7 +80,7 @@ bool is_snake;
 #define PDC_VERY_STRICT 0
 
 #define DEFAULT_CELL_NUM        0
-#define DEFAULT_CELL_LOC        1
+#define DEFAULT_CELL_LOC        0xff01ff11
 
 u8 BiosChecksum;
 
@@ -1495,6 +1495,7 @@ static const char *pdc_name(unsigned long num)
         DO(PDC_INITIATOR)
         DO(PDC_PAT_CELL)
         DO(PDC_PAT_CHASSIS_LOG)
+        DO(PDC_PAT_COMPLEX)
         DO(PDC_PAT_CPU)
         DO(PDC_PAT_EVENT)
         DO(PDC_PAT_IO)
@@ -2413,8 +2414,6 @@ static int pdc_initiator(unsigned long *arg)
     return PDC_BAD_OPTION;
 }
 
-void generate_pcitable(int view, int pathnum, unsigned long *table);
-
 static int pdc_pat_cell(unsigned long *arg)
 {
     unsigned long option = ARG1;
@@ -2450,13 +2449,16 @@ static int pdc_pat_cell(unsigned long *arg)
             }
 
 #if 0
-PAT INDEX: 0: cba 0xfffffffffffa0000, mod_info 0x100000000000001, mod_location   0xff01ff11, mod: 0xa0ff0000 0x0 0x0
-PAT INDEX: 1: cba 0xfffffffffed08001, mod_info 0x200000000000010, mod_location   0xffffff71, mod: 0x40000000 0x0 0x0
-PAT INDEX: 2: cba 0xfffffffffed00001, mod_info 0x32f020000000008, mod_location   0xffffff82, mod: 0x0 0x6 0xc000000000000005
-PAT INDEX: 3: cba 0xfffffffffed30001, mod_info 0x400000000000002, mod_location 0xffff00ff83, mod: 0x0 0x4 0x8000000000000000
+PAT INDEX: 0: cba 0xfffffffffffa0000, mod_info 0x100000000000001, mod_location 0xff01ff11, mod: 0xa0ff0000 0x0
+PAT INDEX: 1: cba 0xfffffffffed08001, mod_info 0x200000000000010, mod_location 0xffffff71, mod: 0x40000000 0x0
+PAT INDEX: 2: cba 0xfffffffffed00001, mod_info 0x32f020000000008, mod_location 0xffffff82, mod: 0x0 0x6 0xc000000000000005
+    0xfffffffffed18000 0xfffffffffed2ffff 0x8000000000000000 0x0 0x3f 0x8000000000000001 0xfffffffff8000000
+    0xfffffffffbffffff 0x40000001a1701
+PAT INDEX: 3: cba 0xfffffffffed30001, mod_info 0x400000000000002, mod_location 0xffff00ff83, mod: 0x0 0x4 ...
 PAT INDEX: 4: cba 0xfffffffffed34001, mod_info 0x400000000000002, mod_location 0xffff02ff83, mod: 0x0 0x4 0x8000000000000000
 PAT INDEX: 5: cba 0xfffffffffed38001, mod_info 0x400000000000002, mod_location 0xffff04ff83, mod: 0x0 0x4 0x8000000000000000
 PAT INDEX: 6: cba 0xfffffffffed3c001, mod_info 0x400000000000002, mod_location 0xffff06ff83, mod: 0x0 0x4 0x8000000000000000
+
 Found devices:
 1. Crescendo DC- 440 [160] at 0xfffffffffffa0000 { type:0, hv:0x5d6, sv:0x4, rev:0x0 }
 2. Memory [8] at 0xfffffffffed08000 { type:1, hv:0x9b, sv:0x9, rev:0x0 }
@@ -2473,7 +2475,6 @@ Found devices:
 	    if ((dev->iodc->type & 0x1f) != HPHW_NPROC) // CPU
 		mb->cba |= 1;	/* endianess bit */
             mb->mod_path = dev->mod_path->path;
-	// HELGE
             switch (dev->iodc->type & 0x1f) {
             case HPHW_NPROC:        /* CPU */
                 mb->mod_info = (unsigned long) 0x100000000000001UL;
@@ -2481,22 +2482,20 @@ Found devices:
                 /* see IOSAPIC encoding in in astro.c in qemu: */
                 #define SWIZZLE_HPA(a) \
                     ((((a) & 0x0ff00000) >> 4) | (((a) & 0x000ff000) << 12))
-                if (view == PA_VIEW)
-                    mb->mod[0] = SWIZZLE_HPA(dev->hpa); // for iommu, only on PAT
-                else
-                    mb->mod[0] = (dev->mod_path->path.mod << 24) | (0xff << 16);
+                mb->mod[0] = SWIZZLE_HPA(dev->hpa); // for iommu, only on PAT
                 break;
             case HPHW_MEMORY:
                 mb->mod_info = (unsigned long) 0x200000000000010UL;
                 mb->mod_location = 0xffffff71;
-                mb->mod[0] = 0x40000000;
+                mb->mod[0] = ram_size;
+                mb->mod[1] = 0; /* no ranges */
                 break;
             case HPHW_IOA: /* Astro BC Runway Port */
                 mb->mod_info = (unsigned long) 0x32f020000000008UL;
                 mb->mod_location = 0xffffff82;
                 mb->mod[0] = 0x0;
                 mb->mod[1] = 0x6;
-                mb->mod[2] = (unsigned long) 0xc000000000000005;
+                mb->mod[2] = (unsigned long) 0xc000000000000005UL;
                 break;
             case HPHW_BRIDGE: /* Elroy PCI bridge */
                 mb->mod_info = (unsigned long) 0x400000000000002UL;
@@ -2504,8 +2503,8 @@ Found devices:
                 mb->mod_location |= dev->mod_path->path.mod << 16;
                 generate_pcitable(view, dev->mod_path->path.mod, mb->mod);
                 break;
-             default:
-                dprintf(1, "pdc_pat_cell unknown module %d\n", dev->iodc->type & 0x1f);
+            default:
+                BUG_ON(1);
                 return PDC_INVALID_ARG;
             }
             if (0)
@@ -2515,6 +2514,14 @@ Found devices:
             break;
     }
     printf("\n\nSeaBIOS: Unimplemented PDC_PAT_CELL function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
+    return PDC_BAD_OPTION;
+}
+
+static int pdc_pat_complex(unsigned long *arg)
+{
+    unsigned long option = ARG1;
+
+    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_COMPLEX function %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
     return PDC_BAD_OPTION;
 }
 
@@ -2528,7 +2535,7 @@ static int pdc_pat_cpu(unsigned long *arg)
         case PDC_PAT_CPU_GET_NUMBER:
             hpa = COMPAT_VAL(ARG3);
             result[0] = index_of_CPU_HPA(hpa);
-            result[1] = hpa;    /* location */
+            result[1] = DEFAULT_CELL_LOC;    /* location */
             result[2] = 0;      /* num siblings */
             return PDC_OK;
         case PDC_PAT_CPU_GET_HPA:
@@ -2536,7 +2543,7 @@ static int pdc_pat_cpu(unsigned long *arg)
                 return PDC_INVALID_ARG;
             hpa = CPU_HPA_IDX(ARG3);
             result[0] = hpa;
-            result[1] = hpa;    /* location */
+            result[1] = DEFAULT_CELL_LOC;    /* location */
             result[2] = 0;      /* num siblings */
             return PDC_OK;
         case PDC_PAT_CPU_RENDEZVOUS:
@@ -2626,6 +2633,13 @@ static int pdc_pat_io(unsigned long *arg)
                 return PDC_INVALID_ARG;
             memcpy(result, irt_table, irt_table_entries * 16);
             return PDC_OK;
+        case PDC_PAT_IO_PCI_CONFIG_READ:
+            printf("READ %lx bytes from %lx  len %ld\n", ARG1, ARG2, ARG3);
+            // PCI_addr size  // HELGE
+        case PDC_PAT_IO_PCI_CONFIG_WRITE:
+            // pci addr, size value
+            printf("WRITE %lx bytes to %lx  len %ld\n", ARG4, ARG2, ARG3);
+            return PDC_BAD_OPTION;
     }
     printf("\n\nSeaBIOS: Unimplemented PDC_PAT_IO function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
@@ -2782,6 +2796,11 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
                 return PDC_BAD_PROC;
             dprintf(0, "\n\nSeaBIOS: PDC_PAT_CHASSIS_LOG OPTION %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
             return PDC_BAD_PROC;
+
+        case PDC_PAT_COMPLEX:
+            if (pat_disabled())
+                return PDC_BAD_PROC;
+            return pdc_pat_complex(arg);
 
         case PDC_PAT_CPU:
             if (pat_disabled())

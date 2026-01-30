@@ -70,6 +70,7 @@
 /* PDC PAT COMPLEX */
 
 #define PDC_PAT_COMPLEX			66L
+#define PDC_PAT_COMPLEX_GET_STABLE_PROFILE      2L /* Return stable profile */
 
 /* PDC PAT CPU  -- CPU configuration within the protection domain */
 
