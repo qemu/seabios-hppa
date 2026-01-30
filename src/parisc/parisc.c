@@ -1,6 +1,6 @@
 // Glue code for parisc architecture
 //
-// Copyright (C) 2017-2025 Helge Deller <deller@gmx.de>
+// Copyright (C) 2017-2026 Helge Deller <deller@gmx.de>
 // Copyright (C) 2019 Sven Schnelle <svens@stackframe.org>
 //
 // This file may be distributed under the terms of the GNU LGPLv3 license.
@@ -3705,7 +3705,7 @@ void __VISIBLE start_parisc_firmware(void)
             "Duplex Console IO Dependent Code (IODC) revision " SEABIOS_HPPA_VERSION_STR "\n"
             "\n", is_64bit_PDC() ? 64 : 32, qemu_version);
     printf("------------------------------------------------------------------------------\n"
-            "  (c) Copyright 2017-2025 Helge Deller <deller@gmx.de> and SeaBIOS developers.\n"
+            "  (c) Copyright 2017-2026 Helge Deller <deller@gmx.de> and SeaBIOS developers.\n"
             "------------------------------------------------------------------------------\n\n");
     printf( "  Processor   Speed            State           Coprocessor State  Cache Size\n"
             "  ---------  --------   ---------------------  -----------------  ----------\n");
