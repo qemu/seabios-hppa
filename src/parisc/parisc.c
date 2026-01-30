@@ -644,6 +644,12 @@ static const char *hpa_device_name(unsigned long hpa, int output)
                 "SERIAL_1.9600.8.none" : "SERIAL_2.9600.8.none";
 }
 
+static void print_hwpath(struct hardware_path *p, int newline)
+{
+    printf("PATH %d/%d/%d/%d/%d/%d.%d%s", p->bc[0], p->bc[1],
+            p->bc[2],p->bc[3],p->bc[4],p->bc[5],
+            p->mod, newline ? "\n":"");
+}
 static void print_mod_path(struct pdc_module_path *p, int newline)
 {
     printf("PATH %d/%d/%d/%d/%d/%d/%d:%d.%d.%d %s", p->path.bc[0], p->path.bc[1],
@@ -2521,7 +2527,12 @@ static int pdc_pat_complex(unsigned long *arg)
 {
     unsigned long option = ARG1;
 
-    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_COMPLEX function %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n", option, ARG2, ARG3, ARG4);
+    switch (option) {
+        case PDC_PAT_COMPLEX_GET_STABLE_PROFILE:
+            return PDC_BAD_OPTION;      /* we do not support complex */
+    }
+    printf("\n\nSeaBIOS: Unimplemented PDC_PAT_COMPLEX function %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n",
+            option, ARG2, ARG3, ARG4);
     return PDC_BAD_OPTION;
 }
 
@@ -2532,11 +2543,15 @@ static int pdc_pat_cpu(unsigned long *arg)
     unsigned long hpa;
 
     switch (option) {
+        case PDC_PAT_CPU_INFO:
+            hpa = COMPAT_VAL(ARG3);
+            result[0] = 0;      /* CPU is configured */
+            return PDC_OK;
         case PDC_PAT_CPU_GET_NUMBER:
             hpa = COMPAT_VAL(ARG3);
             result[0] = index_of_CPU_HPA(hpa);
             result[1] = DEFAULT_CELL_LOC;    /* location */
-            result[2] = 0;      /* num siblings */
+            result[2] = smp_cpus;        /* num siblings */
             return PDC_OK;
         case PDC_PAT_CPU_GET_HPA:
             if ((unsigned long)ARG3 >= smp_cpus)
@@ -2544,7 +2559,7 @@ static int pdc_pat_cpu(unsigned long *arg)
             hpa = CPU_HPA_IDX(ARG3);
             result[0] = hpa;
             result[1] = DEFAULT_CELL_LOC;    /* location */
-            result[2] = 0;      /* num siblings */
+            result[2] = smp_cpus;        /* num siblings */
             return PDC_OK;
         case PDC_PAT_CPU_RENDEZVOUS:
             ARG1 = 1;
@@ -2563,8 +2578,19 @@ static int pdc_pat_event(unsigned long *arg)
 
     switch (option) {
         case PDC_PAT_EVENT_GET_CAPS:
-            result[0] = result[1] = 0x0f;       /* XXX: review caps! */
+            result[0] = result[1] = 0;  /* XXX: review caps! (0x0f) */
             return PDC_OK;
+        case PDC_PAT_EVENT_SET_MODE:
+            if (ARG3 == 0)
+                return PDC_OK;
+            printf("PDC_PAT_EVENT_SET_MODE: events 0x%lx, vector 0x%lx, dest_lid 0x%lx\n", ARG3, ARG4, ARG5);
+            return PDC_INVALID_ARG;
+        case PDC_PAT_EVENT_SCAN:
+            result[0] = result[1] = 0;  /* XXX review */
+            if (ARG3 == 0)
+                return PDC_OK;
+            printf("PDC_PAT_EVENT_SCAN: hide_events 0x%lx\n", ARG3);
+            return PDC_INVALID_ARG;
         default:
             break;
     }
@@ -2601,13 +2627,18 @@ static int pdc_pat_pd(unsigned long *arg)
             memcpy(dest, ((char *)&mem_table) + offset, count);
             result[0] = count;
             return PDC_OK;
-
         case PDC_PAT_PD_GET_PDC_INTERF_REV:
             result[0] = SEABIOS_HPPA_VERSION;  // legacy_rev
             result[1] = SEABIOS_HPPA_VERSION << 6 | 0x00;  // pat_rev
             result[2] = PDC_PAT_CAPABILITY_BIT_SIMULTANEOUS_PTLB;  // pat_cap
             // C3700: 0x05, pat_rev 0x006
             // A400:  0x24, pat_rev 0x201, pdc_cap 0x32,
+            return PDC_OK;
+        case PDC_PAT_PD_GET_PLATFORM_COUNTER:
+            /* should be implemented in qemu!! */
+            return PDC_BAD_OPTION;
+        case PDC_PAT_PD_GET_ALIVE_CELLS:
+            result[0] = 0x01;  // bitmask
             return PDC_OK;
         default:
             break;
@@ -2621,6 +2652,8 @@ static int pdc_pat_io(unsigned long *arg)
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
     unsigned long cell = ARG3;
+    struct hardware_path path, *ppath;
+    u16 bdf;
 
     switch (option) {
         case PDC_PAT_IO_GET_PCI_ROUTING_TABLE_SIZE:
@@ -2634,12 +2667,33 @@ static int pdc_pat_io(unsigned long *arg)
             memcpy(result, irt_table, irt_table_entries * 16);
             return PDC_OK;
         case PDC_PAT_IO_PCI_CONFIG_READ:
-            printf("READ %lx bytes from %lx  len %ld\n", ARG1, ARG2, ARG3);
-            // PCI_addr size  // HELGE
+            // printf("READ %lx bytes from %lx  len %ld\n", ARG1, ARG2, ARG3);
+            switch (ARG4) {
+              case 1:   result[0] = pci_config_readb(0, ARG3);   break;
+              case 2:   result[0] = pci_config_readw(0, ARG3);   break;
+              case 4:   result[0] = pci_config_readl(0, ARG3);   break;
+              default:  printf("read len huh?\n"); return PDC_INVALID_ARG;
+            }
+            return PDC_OK;
         case PDC_PAT_IO_PCI_CONFIG_WRITE:
-            // pci addr, size value
-            printf("WRITE %lx bytes to %lx  len %ld\n", ARG4, ARG2, ARG3);
-            return PDC_BAD_OPTION;
+            // printf("WRITE %lx to %lx  len %ld\n", ARG4, ARG2, ARG3);
+            switch (ARG3) {
+              case 1:   pci_config_writeb(0, ARG2, ARG4);   break;
+              case 2:   pci_config_writew(0, ARG2, ARG4);   break;
+              case 4:   pci_config_writel(0, ARG2, ARG4);   break;
+              default:  printf("write len huh?\n"); return PDC_INVALID_ARG;
+            }
+            return PDC_OK;
+        case PDC_PAT_IO_GET_HW_FROM_PCI_CONFIG:
+            bdf = ARG3 >> 11;
+            ppath = (void *)ARG2;
+            path = (struct hardware_path) { .flags = DEFAULT_CELL_NUM,
+                    .bc = { 0xff, 0xff, 0xff, 0x00, 0x00, pci_bdf_to_dev(bdf) },
+                    .mod = pci_bdf_to_fn(bdf) };
+            *ppath = path;// HELGE
+            printf("HWPATH from 0x%lx ", ARG3);
+            print_hwpath(ppath, true);
+            return PDC_OK;
     }
     printf("\n\nSeaBIOS: Unimplemented PDC_PAT_IO function %ld ARG3=%lx ARG4=%lx ARG5=%lx\n", option, ARG3, ARG4, ARG5);
     return PDC_BAD_OPTION;
@@ -2753,6 +2807,11 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
 
 	case PDC_MEM_MAP:
             return pdc_mem_map(arg);
+
+        case 27:
+            if (ARG1 == 0)              /* PAT: HP-UX 11iv3 ask for it. */
+                return PDC_BAD_PROC;
+            break;
 
         case 134:
             if (ARG1 == 1 || ARG1 == 513) /* HP-UX 11.11 ask for it. */

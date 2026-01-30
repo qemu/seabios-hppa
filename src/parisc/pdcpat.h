@@ -180,6 +180,8 @@
 #define PDC_PAT_PD		74L         /* Protection Domain Info   */
 #define PDC_PAT_PD_GET_ADDR_MAP		0L  /* Get Address Map          */
 #define PDC_PAT_PD_GET_PDC_INTERF_REV	1L  /* Get PDC Interface Revisions */
+#define PDC_PAT_PD_GET_PLATFORM_COUNTER	10L /* Return syncronized clock tick */
+#define PDC_PAT_PD_GET_ALIVE_CELLS	11L /* Return alive cells in PD */
 
 #define PDC_PAT_CAPABILITY_BIT_PDC_SERIALIZE	(1UL << 0)
 #define PDC_PAT_CAPABILITY_BIT_PDC_POLLING	(1UL << 1)

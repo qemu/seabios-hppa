@@ -3,23 +3,7 @@
 /* generated with Linux kernel */
 /* search for PARISC_QEMU_MACHINE_HEADER in Linux */
 #if 0
-PAT INDEX: 0: cba 0xfffffffffffa0000, mod_info 0x100000000000001, mod_location   0xff01ff11, mod: 0xa0ff0000 0x0 0x0
-PAT INDEX: 1: cba 0xfffffffffed08001, mod_info 0x200000000000010, mod_location   0xffffff71, mod: 0x40000000 0x0 0x0
-PAT INDEX: 2: cba 0xfffffffffed00001, mod_info 0x32f020000000008, mod_location   0xffffff82, mod: 0x0 0x6 0xc000000000000005
-PAT INDEX: 3: cba 0xfffffffffed30001, mod_info 0x400000000000002, mod_location 0xffff00ff83, mod: 0x0 0x4 0x8000000000000000
-PAT INDEX: 4: cba 0xfffffffffed34001, mod_info 0x400000000000002, mod_location 0xffff02ff83, mod: 0x0 0x4 0x8000000000000000
-PAT INDEX: 5: cba 0xfffffffffed38001, mod_info 0x400000000000002, mod_location 0xffff04ff83, mod: 0x0 0x4 0x8000000000000000
-PAT INDEX: 6: cba 0xfffffffffed3c001, mod_info 0x400000000000002, mod_location 0xffff06ff83, mod: 0x0 0x4 0x8000000000000000
 Found devices:
-1. Crescendo DC- 440 [160] at 0xfffffffffffa0000 { type:0, hv:0x5d6, sv:0x4, rev:0x0 }
-2. Memory [8] at 0xfffffffffed08000 { type:1, hv:0x9b, sv:0x9, rev:0x0 }
-3. Astro BC Runway Port [0] at 0xfffffffffed00000 { type:12, hv:0x582, sv:0xb, rev:0x0 }
-4. Elroy PCI Bridge [0:0] at 0xfffffffffed30000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
-5. Elroy PCI Bridge [0:2] at 0xfffffffffed34000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
-6. Elroy PCI Bridge [0:4] at 0xfffffffffed38000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
-7. Elroy PCI Bridge [0:6] at 0xfffffffffed3c000 { type:13, hv:0x782, sv:0xa, rev:0x0 }
-
-
 1. Crescendo DC- 440 [160] at 0xfffffffffffa0000 { type:0, hv:0x5d6, sv:0x4, rev:0x0 }
 2. Memory [8] at 0xfffffffffed08000 { type:1, hv:0x9b, sv:0x9, rev:0x0 }
 3. Astro BC Runway Port [0] at 0xfffffffffed00000 { type:12, hv:0x582, sv:0xb, rev:0x0 }
