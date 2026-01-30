@@ -1506,6 +1506,7 @@ static const char *pdc_name(unsigned long num)
         DO(PDC_PAT_EVENT)
         DO(PDC_PAT_IO)
         DO(PDC_PAT_MEM)
+        DO(PDC_PAT_NVOLATILE)
         DO(PDC_PAT_PD)
         DO(PDC_LINK)
 #undef DO
@@ -2798,13 +2799,6 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
         case PDC_SCSI_PARMS: // is the architected firmware interface to replace the Hversion PDC_INITIATOR procedure.
             return PDC_BAD_PROC;
 
-        case 73:
-            // Unknown PDC call, seems similiar to PDC_NVOLATILE:
-            // Unimplemented PDC proc UNKNOWN!(73) option 3 result=0 ARG3=0 ARG4=0 ARG5=0 ARG6=0 ARG7=dfb078
-            // Unimplemented PDC proc UNKNOWN!(73) option 2 result=c25780 ARG3=0 ARG4=0 ARG5=0 ARG6=0 ARG7=dfb078
-            // Called by HP-UX 11 64-bit on C3700 machine, which returns PDC_BAD_PROC
-            return PDC_BAD_PROC;
-
 	case PDC_MEM_MAP:
             return pdc_mem_map(arg);
 
@@ -2870,6 +2864,12 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
             if (pat_disabled())
                 return PDC_BAD_PROC;
             return pdc_pat_event(arg);
+
+        case PDC_PAT_NVOLATILE:
+            // Unimplemented PDC proc UNKNOWN!(73) option 3 result=0 ARG3=0 ARG4=0 ARG5=0 ARG6=0 ARG7=dfb078
+            // Unimplemented PDC proc UNKNOWN!(73) option 2 result=c25780 ARG3=0 ARG4=0 ARG5=0 ARG6=0 ARG7=dfb078
+            // Called by HP-UX 11 64-bit on C3700 machine, which returns PDC_BAD_PROC
+            return PDC_BAD_PROC;
 
         case PDC_PAT_PD:
             if (pat_disabled())
@@ -3654,7 +3654,7 @@ void __VISIBLE start_parisc_firmware(void)
 
     if (is_64bit_PDC()) {
         /* HP-UX 11 checks RAM in rminit() from this address */
-        *(unsigned int *) 0x33c = ram_size_low >> 12; /* # of pages */
+        *(unsigned int *) PGZ_IMC_MAX_MEM_64BITOS = ram_size_low >> 12; /* # of pages */
     }
     PAGE0->memc_cont = ram_size_low;
     PAGE0->memc_phsize = ram_size_low;
@@ -3792,11 +3792,12 @@ void __VISIBLE start_parisc_firmware(void)
                 " MHz    %s                 Functional            0 KB\n",
                 i < 10 ? " ":"", i, i?"Idle  ":"Active");
     printf("\n\n");
-    printf("  Emulated machine:     HP %s (%d-bit %s), %d-bit PDC%s%s\n"
+    printf("  Emulated machine:     HP %s (%d-bit %s), %d-bit %sPDC%s%s\n"
             "  Available memory:     %lu MB\n"
             "  Good memory required: %d MB\n\n",
             qemu_machine, cpu_bit_width, is_64bit_CPU() ? "PA2.0" : "PA1.1",
             is_64bit_PDC() ? 64 : 32,
+            pat_disabled() ? "" : "PAT ",
             enable_OS64 & PDC_MODEL_OS32 ? ", OS32":"",
             enable_OS64 & PDC_MODEL_OS64 ? ", OS64":"",
             ram_size/1024/1024, MIN_RAM_SIZE/1024/1024);

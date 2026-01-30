@@ -140,6 +140,14 @@
 #define PDC_PAT_IO_BAY_STATUS_INFO  	28L /* Get I/O Bay Slot Status Info */
 #define PDC_PAT_IO_GET_PROC_VIEW        29L /* Get Processor view of IO address */
 #define PDC_PAT_IO_PROG_SBA_DIR_RANGE   30L /* Program directed range */
+#define PDC_PAT_IO_SET_HARD_FAIL_ENABLE 31L /* Set HFE bit */
+#define PDC_PAT_IO_CLR_HARD_FAIL_ENABLE 32L /* Clear HFE bit */
+#define PDC_PAT_IO_GET_HARD_FAIL_ENABLE 33L /* Get HFE bit */
+#define PDC_PAT_IO_SET_CHASSIS_PI       34L /* Set I/O Chassis Slot Power
+                                                  * Indicator */
+#define PDC_PAT_IO_SET_HOT_PLUG_PI      35L /* Set Hot Plug I/O Slot
+                                                  * Power Indicator */
+
 
 
 /* PDC PAT MEM  -- Manage memory page deallocation */
@@ -209,8 +217,11 @@
 #define PDC_PAT_TOC_REGISTER_VECTOR	0L /* Register TOC Vector */
 #define PDC_PAT_TOC_READ_VECTOR		1L /* Read TOC Vector     */
 
+/* PDC_PAT_UFO */
+#define PDC_PAT_UFO             76L  /* Unix-Fail Over */
+
 /* PDC PAT SYSTEM_INFO */
-#define PDC_PAT_SYSTEM_INFO	76L
+#define PDC_PAT_SYSTEM_INFO	127L
 /* PDC_PAT_SYSTEM_INFO uses the same options as PDC_SYSTEM_INFO function. */
 
 #ifndef __ASSEMBLY__
