@@ -22,6 +22,7 @@
 #include "hw/pci_ids.h" // PCI IDs
 #include "hw/pci_regs.h" // PCI_BASE_ADDRESS_0
 #include "hw/ata.h"
+#include "hw/lsi-scsi.h"
 #include "hw/usb.h"
 #include "hw/usb-ohci.h"
 #include "hw/blockcmd.h" // scsi_is_ready()
@@ -1365,6 +1366,9 @@ int __VISIBLE parisc_iodc_ENTRY_INIT(unsigned int *arg)
                 result[2] = result[3] = 0;
             return PDC_OK;
         case ENTRY_INIT_MOD:    /* 6: INIT */
+            /* work-around for ODE for HP30000 which resets all PCI devices */
+            if (DEV_is_storage_device(dev) && dev->pci)
+                lsi_scsi_setup();       /* re-initialize LSI SCSI */
             result[0] = 0; /* module IO_STATUS */
             return PDC_OK;
     }
@@ -2421,13 +2425,35 @@ static int pdc_initiator(unsigned long *arg)
     return PDC_BAD_OPTION;
 }
 
+static pdc_pat_cell_info_rtn_block_t pat_info_block = {
+#ifdef __LP64__
+        .pdc_rev = ((unsigned long) SEABIOS_HPPA_VERSION) << 32, // HELGE
+        .capabilities = PDC_PAT_CAPABILITY_BIT_PDC_IODC_32 |
+                        PDC_PAT_CAPABILITY_BIT_PDC_IODC_64 |
+                        PDC_PAT_CAPABILITY_BIT_SIMULTANEOUS_PTLB,
+        .cell_info = 0,        /* ?*/
+        .cell_phys_location = DEFAULT_CELL_LOC,
+        .cpu_info = (1UL << 16), /* initialized below! */
+        .cpu_speed = 0, /* initialized below */
+        .io_chassis_phys_location = DEFAULT_CELL_LOC,
+        .cell_io_information = 1, /* Core IO present */
+        .io_slot_info_size = ARRAY_SIZE(pat_info_block.io_slot),
+        .io_slot = { { .header = 0, }, }, // info0, info1, phys_loc, hw_path;
+        .cell_mem_size = MIN_RAM_SIZE,
+        .cell_dimm_info_size = ARRAY_SIZE(pat_info_block.dimm_info),
+        .dimm_info = { ((10UL << 16) | 1), },
+        .fabric_info_size = 0,
+        .xbc = { { 0, }, },
+#endif
+};
+
 static int pdc_pat_cell(unsigned long *arg)
 {
     unsigned long option = ARG1;
     struct pdc_pat_cell_num *cell_info = (void *)ARG2;
     unsigned long *result = (unsigned long *)ARG2;
     struct pdc_pat_cell_mod_maddr_block *mb = (void *)ARG6;
-    unsigned long hpa_index;
+    unsigned long hpa_index, count, offset;
     int view;   /* PA_VIEW or IO_VIEW */
     hppa_device_t *dev;
 
@@ -2437,7 +2463,19 @@ static int pdc_pat_cell(unsigned long *arg)
             cell_info->cell_loc = DEFAULT_CELL_LOC;
             return PDC_OK;
         case PDC_PAT_CELL_GET_INFO:
-            return PDC_BAD_OPTION; /* optional on single-cell machines */
+            if (!(ARG6 == DEFAULT_CELL_LOC || (u32)(ARG6) == (u32)-1UL))
+                return PDC_INVALID_ARG;
+            offset = ARG5;
+            if (offset >= sizeof(pat_info_block))
+                return PDC_INVALID_ARG;
+            count = ARG4;
+            if (count > sizeof(pat_info_block))
+                count = sizeof(pat_info_block);
+            if (offset + count >= sizeof(pat_info_block))
+                count = sizeof(pat_info_block) - offset;
+            memcpy((void*)(ARG3), ((unsigned char *)&pat_info_block) + offset, count);
+            result[0] = count;
+            return PDC_OK;
         case PDC_PAT_CELL_MODULE:
             if (ARG3 != DEFAULT_CELL_LOC)
                 return PDC_INVALID_ARG;
@@ -2500,9 +2538,19 @@ Found devices:
             case HPHW_IOA: /* Astro BC Runway Port */
                 mb->mod_info = (unsigned long) 0x32f020000000008UL;
                 mb->mod_location = 0xffffff82;
-                mb->mod[0] = 0x0;
-                mb->mod[1] = 0x6;
-                mb->mod[2] = (unsigned long) 0xc000000000000005UL;
+                mb->mod[0]  = 0x0;       /* unused */
+                mb->mod[1]  = 3;
+                mb->mod[2]  = (unsigned long) 0xc000000000000005UL; /* 1 */
+                mb->mod[3]  = (unsigned long) 0xfffffffffed18000UL;
+                mb->mod[4]  = (unsigned long) 0xfffffffffed2ffffUL;
+                mb->mod[5]  = (unsigned long) 0x8000000000000000UL; /* 2 */
+                mb->mod[6]  = (unsigned long) 0x00UL;
+                mb->mod[7]  = (unsigned long) 0x3fUL;
+                mb->mod[8]  = (unsigned long) 0x8000000000000001UL; /* 3 */
+                mb->mod[9]  = (unsigned long) 0xfffffffff8000000UL;
+                mb->mod[10] = (unsigned long) 0xfffffffffbffffffUL;
+                // TODO: MORE MISSING HERE!!
+                // 0x40000001a1701
                 break;
             case HPHW_BRIDGE: /* Elroy PCI bridge */
                 mb->mod_info = (unsigned long) 0x400000000000002UL;
@@ -2718,8 +2766,15 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
 {
     unsigned long proc = ARG0;
     unsigned long option = ARG1;
+    bool show_debug = true;
 
-    if (pdc_debug & DEBUG_PDC) {
+    /* skip debug for PCI read/writes */
+    if ((proc == PDC_PAT_IO) &&
+            (option == PDC_PAT_IO_PCI_CONFIG_READ ||
+            (option == PDC_PAT_IO_PCI_CONFIG_WRITE)))
+        show_debug = false;
+
+    if ((pdc_debug & DEBUG_PDC) && show_debug) {
         printf("\nSeaBIOS: Start PDC%d proc %s(%ld) option %ld result=0x%lx ARG3=0x%lx %s ",
                 (!is_64bit_PDC() || is_compat_mode()) ? 32 : 64, pdc_name(ARG0), ARG0, ARG1, ARG2, ARG3,
                 (proc == PDC_IODC)?hpa_name(ARG3):"");
@@ -3655,6 +3710,14 @@ void __VISIBLE start_parisc_firmware(void)
     if (is_64bit_PDC()) {
         /* HP-UX 11 checks RAM in rminit() from this address */
         *(unsigned int *) PGZ_IMC_MAX_MEM_64BITOS = ram_size_low >> 12; /* # of pages */
+#ifdef __LP64__
+        pat_info_block.cpu_info = ((1 << (smp_cpus & 0xf)) - 1) | /* XXX limit of 15 CPUs! */
+                (((unsigned long)smp_cpus) << 48) |
+                (((unsigned long)SEABIOS_HPPA_VERSION) << 32);
+        pat_info_block.cpu_speed = CPU_CLOCK_MHZ*(1000000ULL/100);
+        pat_info_block.cell_mem_size = ram_size;
+        // TODO: insert memory DIMM module info.
+#endif
     }
     PAGE0->memc_cont = ram_size_low;
     PAGE0->memc_phsize = ram_size_low;
