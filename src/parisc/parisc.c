@@ -2463,7 +2463,7 @@ static int pdc_pat_cell(unsigned long *arg)
             cell_info->cell_loc = DEFAULT_CELL_LOC;
             return PDC_OK;
         case PDC_PAT_CELL_GET_INFO:
-            if (!(ARG6 == DEFAULT_CELL_LOC || (u32)(ARG6) == (u32)-1UL))
+            if (!(ARG6 == DEFAULT_CELL_NUM || (u32)(ARG6) == (u32)-1UL))
                 return PDC_INVALID_ARG;
             offset = ARG5;
             if (offset >= sizeof(pat_info_block))
@@ -2578,6 +2578,7 @@ static int pdc_pat_complex(unsigned long *arg)
 
     switch (option) {
         case PDC_PAT_COMPLEX_GET_STABLE_PROFILE:
+        case PDC_PAT_COMPLEX_GET_ALL_CELL_STATES:
             return PDC_BAD_OPTION;      /* we do not support complex */
     }
     printf("\n\nSeaBIOS: Unimplemented PDC_PAT_COMPLEX function %lu called with ARG2=%lx ARG3=%lx ARG4=%lx\n",

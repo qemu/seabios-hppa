@@ -71,6 +71,7 @@
 
 #define PDC_PAT_COMPLEX			66L
 #define PDC_PAT_COMPLEX_GET_STABLE_PROFILE      2L /* Return stable profile */
+#define PDC_PAT_COMPLEX_GET_ALL_CELL_STATES     7L /* Return cell states */
 
 /* PDC PAT CPU  -- CPU configuration within the protection domain */
 
