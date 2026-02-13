@@ -3712,9 +3712,10 @@ void __VISIBLE start_parisc_firmware(void)
         /* HP-UX 11 checks RAM in rminit() from this address */
         *(unsigned int *) PGZ_IMC_MAX_MEM_64BITOS = ram_size_low >> 12; /* # of pages */
 #ifdef __LP64__
-        pat_info_block.cpu_info = ((1 << (smp_cpus & 0xf)) - 1) | /* XXX limit of 15 CPUs! */
+        /* XXX pat_info_block.cpu_info limits us to 15 CPUs! */
+        pat_info_block.cpu_info = ((1 << (smp_cpus & 0xf)) - 1) |
                 (((unsigned long)smp_cpus) << 48) |
-                (((unsigned long)SEABIOS_HPPA_VERSION) << 32);
+                (current_machine->pdc_model.hversion << 32);
         pat_info_block.cpu_speed = CPU_CLOCK_MHZ*(1000000ULL/100);
         pat_info_block.cell_mem_size = ram_size;
         // TODO: insert memory DIMM module info.
