@@ -587,7 +587,7 @@ unsigned long add_lmmio_directed_range(unsigned long size, int rope)
     /* Astro has 4 directed ranges. */
     for (i = 0; i < 4; i++) {
             unsigned long addr;
-            void *reg = (void *)(unsigned long) (ASTRO_BASE_HPA + i * 0x18);
+            void *reg = (void *)F_EXTEND(ASTRO_BASE_HPA + i * 0x18);
 
             addr = readl(reg + LMMIO_DIRECT0_BASE);
             if (addr & 1)

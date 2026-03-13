@@ -3749,7 +3749,7 @@ void __VISIBLE start_parisc_firmware(void)
     } else
     if (is_64bit_PDC() && strcmp(str, "C3700") == 0) {
         current_machine = &machine_C3700;
-        pci_hpa = (unsigned long) ELROY0_BASE_HPA;
+        pci_hpa = F_EXTEND(ELROY0_BASE_HPA);
         hppa_port_pci_cmd  = pci_hpa + 0x040;
         hppa_port_pci_data = pci_hpa + 0x048;
         // but report back ASTRO_HPA
@@ -3769,7 +3769,7 @@ void __VISIBLE start_parisc_firmware(void)
         _pat_only = true; /* never support non-PAT functions */
 #endif
         enable_OS64 &= ~PDC_MODEL_OS32; /* do not allow 32-bit OS */
-        pci_hpa = (unsigned long) ELROY0_BASE_HPA;
+        pci_hpa = F_EXTEND(ELROY0_BASE_HPA);
         hppa_port_pci_cmd  = pci_hpa + 0x040;
         hppa_port_pci_data = pci_hpa + 0x048;
         // but report back ASTRO_HPA
