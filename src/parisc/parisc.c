@@ -2707,7 +2707,7 @@ static int pdc_pat_cpu(unsigned long *arg)
 {
     unsigned long option = ARG1;
     unsigned long *result = (unsigned long *)ARG2;
-    unsigned long hpa;
+    unsigned long hpa, i;
 
     switch (option) {
         case PDC_PAT_CPU_INFO:
@@ -2715,18 +2715,28 @@ static int pdc_pat_cpu(unsigned long *arg)
             result[0] = 0;      /* CPU is configured */
             return PDC_OK;
         case PDC_PAT_CPU_GET_NUMBER:
-            hpa = COMPAT_VAL(ARG3);
+            if (ARG3 == -1ULL)          /* -1 => calling CPU */
+                hpa = mfctl(CPU_HPA_CR_REG); /* get CPU HPA from cr7 */
+            else
+                hpa = COMPAT_VAL(ARG3);
             result[0] = index_of_CPU_HPA(hpa);
             result[1] = DEFAULT_CPU_LOC;    /* location */
-            result[2] = smp_cpus;        /* num siblings */
+            result[2] = smp_cpus;       /* num siblings */
+            for (i = 0; i < smp_cpus; i++)
+                result[3 + i] = i;
             return PDC_OK;
         case PDC_PAT_CPU_GET_HPA:
-            if ((unsigned long)ARG3 >= smp_cpus)
+            if (ARG3 == -1ULL)          /* -1 => calling CPU */
+                hpa = mfctl(CPU_HPA_CR_REG); /* get CPU HPA from cr7 */
+            else if ((unsigned long)ARG3 >= smp_cpus)
                 return PDC_INVALID_ARG;
-            hpa = CPU_HPA_IDX(ARG3);
+            else
+                hpa = CPU_HPA_IDX(ARG3);
             result[0] = hpa;
             result[1] = DEFAULT_CPU_LOC;    /* location */
-            result[2] = smp_cpus;        /* num siblings */
+            result[2] = smp_cpus;       /* num siblings */
+            for (i = 0; i < smp_cpus; i++)
+                result[3 + i] = CPU_HPA_IDX(i);
             return PDC_OK;
         case PDC_PAT_CPU_RENDEZVOUS:
             ARG1 = 1;
