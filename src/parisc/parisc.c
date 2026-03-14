@@ -2045,7 +2045,10 @@ static int pdc_proc(unsigned long *arg)
     unsigned long option = ARG1;
 
     switch (option) {
-        case 1:
+        case 0: /* STOP CPU */
+            ARG2 = 0;
+            /* fall through */
+        case 1: /* Rendevouz processor */
             if (ARG2 != 0)
                 return PDC_BAD_PROC;
             if (pdc_debug & DEBUG_PDC)
