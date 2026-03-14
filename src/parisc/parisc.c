@@ -1746,30 +1746,26 @@ static int pdc_cache(unsigned long *arg)
             machine_cache_info->it_loop = 1;
             machine_cache_info->dt_loop = 1;
 
-#if 0
-            dprintf(0, "\n\nCACHE  IC: %ld %ld %ld DC: %ld %ld %ld\n",
-                    machine_cache_info->ic_count, machine_cache_info->ic_loop, machine_cache_info->ic_stride,
-                    machine_cache_info->dc_count, machine_cache_info->dc_loop, machine_cache_info->dc_stride);
-#endif
-#if 1
             /* ODE has problems if we report no cache */
-            machine_cache_info->ic_size = 1024; /* no instruction cache */
-            machine_cache_info->dc_size = 1024; /* no data cache */
-#elif 1
-            machine_cache_info->dc_conf = (struct pdc_cache_cf) { .cc_line = 7, .cc_sh = 1, .cc_cst = 1 };
-            machine_cache_info->ic_conf = (struct pdc_cache_cf) { .cc_line = 7, .cc_sh = 1, .cc_cst = 1 };
-
-            machine_cache_info->ic_size = 0; /* no instruction cache */
-            machine_cache_info->ic_count = 0;
-            machine_cache_info->ic_loop = -1;
-            machine_cache_info->ic_base = 0;
-            machine_cache_info->ic_stride = 0;
-            machine_cache_info->dc_size = 0; /* no data cache */
-            machine_cache_info->dc_count = 0;
-            machine_cache_info->dc_loop = -1;
+            machine_cache_info->dc_size = 1024; /* 1k data cache */
+            machine_cache_info->dc_count = 1;
+            machine_cache_info->dc_loop = 1;
             machine_cache_info->dc_base = 0;
-            machine_cache_info->dc_stride = 0;
-#endif
+            machine_cache_info->dc_stride = machine_cache_info->dc_size;
+            machine_cache_info->dc_conf = (struct pdc_cache_cf) {
+                .cc_alias = is_64bit_CPU() ? 11:4, /* 11 = 4M , 4 = 32k */
+                .cc_block = 1,/* 16k * 16 bytes => 256k */
+                .cc_line  = 4, /* 4*4 => 16 bytes */
+                .cc_wt    = 1, /* 0 = WB-cache, 1 = WT-cache */
+                .cc_sh    = 3, /* 0 = separate I/D-cache, 3=either fdc/fic */
+                .cc_cst   = 1, /* 0 = incoherent cache, 1=coherent cache */
+            };
+            machine_cache_info->ic_size = machine_cache_info->dc_size;
+            machine_cache_info->ic_count = 1;
+            machine_cache_info->ic_loop = 1;
+            machine_cache_info->ic_base = 0;
+            machine_cache_info->ic_stride = machine_cache_info->ic_size;
+            machine_cache_info->ic_conf = machine_cache_info->dc_conf;
 
             memcpy(result, machine_cache_info, sizeof(*machine_cache_info));
             return PDC_OK;
