@@ -1716,7 +1716,7 @@ static int pdc_model(unsigned long *arg, unsigned long narrow_mode)
             result[0] = ARG5;
             return PDC_OK;
         case PDC_MODEL_GET_PLATFORM_INFO:
-            if (1)      /* not supported on B160L or C3700 */
+            if (!pat_only())  /* not supported on B160L or C3700 */
                 return PDC_BAD_OPTION;
             model_str = has_astro ? "A6057A" : "9000/778";
             strtcpy((char *)ARG2, model_str, 16);
@@ -2474,7 +2474,7 @@ static int pdc_initiator(unsigned long *arg)
             result[1] = 10; // scsi_rate: 1, 2, 5 or 10 for 5, 10, 20 or 40 MT/s
             result[2] = 7;  // firmware suggested value for initiator_id
             result[3] = 10; // firmware suggested value for scsi_rate
-            result[4] = 0;  // width: 0:"Narrow, 1:"Wide"
+            result[4] = is_64bit_PDC() ? 1 : 0;  // width: 0:"Narrow, 1:"Wide"
             result[5] = 0; // mode: 0:SMODE_SE, 1:SMODE_HVD, 2:SMODE_LVD
             return PDC_OK;
         case PDC_SET_INITIATOR:
