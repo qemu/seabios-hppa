@@ -8,6 +8,7 @@
 // Example command line:
 // ./qemu-system-hppa -drive file=../qemu-images/hdd.img -kernel vmlinux -append "root=/dev/sda5 cryptomgr.notests"  -smp cpus=2  -snapshot -machine C3700  -vnc :1  -fw_cfg opt/console,string=serial -serial mon:stdio  -device secondary-vga
 
+#include <stdbool.h>
 #include "biosvar.h" // GET_BDA
 #include "bregs.h" // struct bregs
 #include "hw/pic.h" // enable_hwirq
