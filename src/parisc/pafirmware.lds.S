@@ -12,7 +12,7 @@ SECTIONS
 {
 #if BITS == 64
 	/* limit firmware high bits to physical addresses to allow debug info */
-	. = ((FIRMWARE_HIGH & 0x3ffffff0) << 32) + FIRMWARE_START;
+	. = ((FIRMWARE_HIGH & 0x301ffff0) << 32) + FIRMWARE_START;
 #else
 	. = FIRMWARE_START;
 #endif
