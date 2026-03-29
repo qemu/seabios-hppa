@@ -625,6 +625,8 @@ static int HPA_is_keyboard_device(unsigned long hpa)
 
 static int artist_present(void)
 {
+    if (is_64bit_PDC()) // artist disabled on 64-bit machines
+        return 0;
     return !!(*(u32 *)F_EXTEND(0xf8380004) == 0x6dc20006);
 }
 
