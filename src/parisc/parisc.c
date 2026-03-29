@@ -83,6 +83,8 @@ bool is_snake;
 /* Should PDC be very strict in regard to compatibility? */
 #define PDC_VERY_STRICT 0
 
+#define MULTICELL               0       /* multiple cells in this machine? */
+
 #define DEFAULT_CELL_NUM        0       /* keep as 0 */
 #define DEFAULT_CELL_LOC        0x01    // 0xff01ff11
 #define DEFAULT_CPU_LOC         (unsigned long) 0xffff0000ffff15
@@ -2522,8 +2524,8 @@ static int pdc_pat_cell(unsigned long *arg)
             cell_info->cell_loc = DEFAULT_CELL_LOC;
             return PDC_OK;
         case PDC_PAT_CELL_GET_INFO:
-            if (1)
-                return PDC_BAD_OPTION; /* XXX: only required for multi-cell machines */
+            if (!MULTICELL)
+                return PDC_BAD_OPTION; /* only required for multi-cell machines */
             else
             if (!(ARG6 == DEFAULT_CELL_NUM || (u32)(ARG6) == (u32)-1UL))
                 return PDC_INVALID_ARG;
@@ -2814,10 +2816,8 @@ static int pdc_pat_pd(unsigned long *arg)
             /* should be implemented in qemu!! */
             return PDC_BAD_OPTION;
         case PDC_PAT_PD_GET_ALIVE_CELLS:
-            if (1)
-                return PDC_BAD_OPTION; /* make single CELL for now */
-            else
-                result[0] = 1;  // bitmask
+            // if (!MULTICELL) return PDC_BAD_OPTION;
+            result[0] = 1;  // bitmask: cell #0 alive
             return PDC_OK;
         default:
             break;
@@ -2942,7 +2942,7 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
             return pdc_cache(arg);
 
         case PDC_HPA:
-            if (pat_only())
+            if (MULTICELL && pat_only())
                 return PDC_BAD_PROC;
             return pdc_hpa(arg);
 
@@ -2956,11 +2956,13 @@ int __VISIBLE parisc_pdc_entry(unsigned long *arg, unsigned long narrow_mode)
             return pdc_tod(arg);
 
         case PDC_STABLE:
-            if (pat_only())
+            if (MULTICELL && pat_only())
                 return PDC_BAD_PROC;
             return pdc_stable(arg);
 
         case PDC_NVOLATILE:
+            if (MULTICELL && pat_only())
+                return PDC_BAD_PROC;
             return pdc_nvolatile(arg);
 
         case PDC_ADD_VALID:
