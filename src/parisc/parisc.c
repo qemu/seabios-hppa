@@ -89,6 +89,9 @@ bool is_snake;
 #define DEFAULT_CELL_LOC        0x01    // 0xff01ff11
 #define DEFAULT_CPU_LOC         (unsigned long) 0xffff0000ffff15
 
+#define MIN(a,b)                ((a) <= (b) ? (a) : (b))
+#define GiB                     (1ULL * 1024 * 1024 * 1024)
+
 u8 BiosChecksum;
 
 char zonefseg_start, zonefseg_end;  // SYMBOLS
@@ -233,12 +236,9 @@ static int index_of_CPU_HPA(unsigned long hpa) {
 }
 
 static unsigned long GoldenMemory = MIN_RAM_SIZE;
-static unsigned long ram_size_low;
-#if defined(__LP64__)
-static unsigned long ram_size_high = 0;
-#else
-#define ram_size_high   0   /* Memory limited to < 4GB with 32-bit firmware */
-#endif
+static unsigned long ram_size_low, ram_size_mid, ram_size_high;
+static unsigned long memsplit_addr;
+static unsigned long mem_table_size; /* = 1, 2 or 3 */
 
 static unsigned int chassis_code = 0;
 
@@ -2146,14 +2146,21 @@ static int pdc_mem(unsigned long *arg)
                 return PDC_INVALID_ARG;
             raddr = ARG2 ? (void *)ARG2 : &temp_raddr;
             raddr->entries_returned = 1;
-            raddr->entries_total = ram_size_high ? 2 : 1;
+            raddr->entries_total = mem_table_size;
             table->paddr = 0;
             table->pages = ram_size_low / PAGE_SIZE; /* Length in 4K pages */
             table->reserved = 0;
-            if (ram_size_high && entries > 1) {
+            if (ram_size_mid) {
                 raddr->entries_returned++;
                 table++;
-                table->paddr = RAM_MAP_HIGH;
+                table->paddr = RAM_MAP_HIGH2;
+                table->pages = ram_size_mid / PAGE_SIZE; /* Length in 4K pages */
+                table->reserved = 0;
+            }
+            if (ram_size_high) {
+                raddr->entries_returned++;
+                table++;
+                table->paddr = RAM_MAP_HIGH1;
                 table->pages = ram_size_high / PAGE_SIZE; /* Length in 4K pages */
                 table->reserved = 0;
             }
@@ -2830,13 +2837,15 @@ static int pdc_pat_pd(unsigned long *arg)
     struct pdc_pat_pd_addr_map_entry *dest = (void *)ARG3;
     unsigned long count = ARG4;
     unsigned long offset = ARG5;
-    static struct pdc_pat_pd_addr_map_entry mem_table[2] = {
+    static struct pdc_pat_pd_addr_map_entry mem_table[3] = {
+     { .entry_type = PAT_MEMORY_DESCRIPTOR, .memory_type = PAT_MEMTYPE_MEMORY,
+       .memory_usage = PAT_MEMUSE_GENERAL },
      { .entry_type = PAT_MEMORY_DESCRIPTOR, .memory_type = PAT_MEMTYPE_MEMORY,
        .memory_usage = PAT_MEMUSE_GENERAL },
      { .entry_type = PAT_MEMORY_DESCRIPTOR, .memory_type = PAT_MEMTYPE_MEMORY,
        .memory_usage = PAT_MEMUSE_GENERAL },
     };
-    unsigned long table_size = (ram_size_high ? 2:1) * sizeof(mem_table[0]);
+    unsigned long table_size = mem_table_size * sizeof(mem_table[0]);
 
     switch (option) {
         case PDC_PAT_PD_GET_ADDR_MAP:
@@ -2846,8 +2855,10 @@ static int pdc_pat_pd(unsigned long *arg)
                 return PDC_INVALID_ARG;
             mem_table[0].paddr = 0;
             mem_table[0].pages = ram_size_low / PAGE_SIZE;
-            mem_table[1].paddr = RAM_MAP_HIGH;
-            mem_table[1].pages = ram_size_high / PAGE_SIZE;
+            mem_table[1].paddr = RAM_MAP_HIGH2;
+            mem_table[1].pages = ram_size_mid / PAGE_SIZE;
+            mem_table[2].paddr = RAM_MAP_HIGH1;
+            mem_table[2].pages = ram_size_high / PAGE_SIZE;
             count -= offset;
             /* if ARG3 (dest) is zero the caller just wanted to get
              * the number of required bytes. Do not overwrite PAGE0! */
@@ -3753,14 +3764,6 @@ void __VISIBLE start_parisc_firmware(void)
         smp_cpus = HPPA_MAX_CPUS;
     num_online_cpus = smp_cpus;
 
-    ram_size_low = ram_size;
-    if (ram_size_low >= FIRMWARE_START) {
-        ram_size_low = FIRMWARE_START;
-#if defined(__LP64__)
-        ram_size_high = ram_size - FIRMWARE_START;
-#endif
-    }
-
     /* Initialize malloc stack */
     malloc_preinit();
 
@@ -3868,6 +3871,28 @@ void __VISIBLE start_parisc_firmware(void)
     }
     parisc_devices = current_machine->device_list;
     strtcpy(qemu_machine, str, sizeof(qemu_machine));
+
+    ram_size_low = ram_size;
+    /* on C3700 and other machines, the memtable stops at 3.75 GB */
+    if (ram_size_low >= FIRMWARE_START)
+        ram_size_low = FIRMWARE_START;
+    /* The A400 and other PAT only machines split low memory at 1GB. */
+    if (pat_only())
+        ram_size_low = MIN(1 * GiB, ram_size_low);
+    /* split all memory into low (0-3.75 GB), mid (0.25 - 3 GB) and high (all other) */
+    ram_size_high = ram_size - ram_size_low;
+    ram_size_mid  = MIN(ram_size_high, 4 * GiB - ram_size_low);
+    ram_size_high -= ram_size_mid;
+    mem_table_size = (ram_size_high ? 3 : ram_size_mid ? 2 : 1);
+
+    /* Memory split into various regions on PA2.0 machines */
+    memsplit_addr = romfile_loadint("/etc/hppa/memsplit-addr", 0);
+    if (memsplit_addr == 0 && ram_size_high != 0) {
+        printf("\nSeaBIOS firmware and this QEMU version are incompatible.\n"
+               "Reduce guest memory to < 1GB or update.\n");
+        hlt();
+    }
+    BUG_ON(memsplit_addr < ram_size_low);
 
     tlb_entries = romfile_loadint("/etc/cpu/tlb_entries", 256);
     dprintf(0, "fw_cfg: TLB entries %d\n", tlb_entries);
