@@ -310,7 +310,19 @@ END(startup)
 
 /*******************************************************/
 
+/* no_os_toc_handler is SeaBIOS default toc handler after bootup */
+ENTRY(no_os_toc_handler)
+        break 0,0
+        b,n .
+
 ENTRY(start_kernel)
+        /* save above toc handler ptr into PAGE0 */
+        load32_firmware BOOTADDR(no_os_toc_handler),%r1
+        stw     %r1,8(%r0)      /* vec_toc */
+#ifdef CONFIG_64BIT
+        ldi	FIRMWARE_HIGH,%r1
+        stw     %r1,9*4(%r0)    /* vec_toc_hi */
+#endif
 #ifdef CONFIG_64BIT
 	bv	0(%r22)
 	clear_PSW_W	/* clear PSW before we start the kernel! */
@@ -340,8 +352,20 @@ END(start_kernel)
 
         .import pim_toc_data, data
 ENTRY(toc_asm_entry)
+        /* if operating system has installed vec_toc, jump there */
+        ldw     8(%r0),%r1      /* vec_toc */
+#ifdef CONFIG_64BIT
+        ldw     9*4(%r0),%r31   /* vec_toc_hi */
+        depd    %r31, 31, 32, %r1
+#endif
+        cmpib,=,n 0,%r1,1f
+#if 1
+        break   0,0             /* this triggers backtraces on HP-UX */
+#endif
+        bv,n    0(%r1)          /* jump to vec_toc of OS. */
+
         /* serialize CPUs on entry */
-        load32_firmware BOOTADDR(toc_lock),TEMP
+1:      load32_firmware BOOTADDR(toc_lock),TEMP
 0:      ldcw,co 0(TEMP),TEMP2
         cmpib,= 0,TEMP2,0b
         nop
