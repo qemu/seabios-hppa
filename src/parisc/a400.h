@@ -226,6 +226,12 @@ static struct pdc_iodc iodc_data_hpa_fffffffffed3c000 = {
 
 
 #define PARISC_DEVICE_LIST \
+        {       .hpa = CPU_HPA /* 0xfffffffffffa0000 */,\
+                .iodc = &iodc_data_hpa_fffffffffffa0000,\
+                .mod_info = &mod_info_hpa_fffffffffffa0000,\
+                .mod_path = &mod_path_hpa_fffffffffffa0000,\
+                .num_addr = HPA_fffffffffffa0000_num_addr,\
+                .add_addr = { HPA_fffffffffffa0000_add_addr } },\
         {       .hpa = ASTRO_MEMORY_HPA_A400 /* 0xfffffffffed08000 */ ,\
                 .iodc = &iodc_data_hpa_fffffffffed08000,\
                 .mod_info = &mod_info_hpa_fffffffffed08000,\
@@ -262,10 +268,4 @@ static struct pdc_iodc iodc_data_hpa_fffffffffed3c000 = {
                 .mod_path = &mod_path_hpa_fffffffffed3c000,\
                 .num_addr = HPA_fffffffffed3c000_num_addr,\
                 .add_addr = { HPA_fffffffffed3c000_add_addr } },\
-        {       .hpa = CPU_HPA /* 0xfffffffffffa0000 */,\
-                .iodc = &iodc_data_hpa_fffffffffffa0000,\
-                .mod_info = &mod_info_hpa_fffffffffffa0000,\
-                .mod_path = &mod_path_hpa_fffffffffffa0000,\
-                .num_addr = HPA_fffffffffffa0000_num_addr,\
-                .add_addr = { HPA_fffffffffffa0000_add_addr } },\
         { 0, }
