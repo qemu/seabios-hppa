@@ -361,6 +361,10 @@ static inline void smp_wmb(void) {
 
 /*  readX()/writeX() do byteswapping */
 
+static inline void writeq(void *addr, u64 val) {
+    barrier();
+    *(volatile u64 *)addr = cpu_to_le64(val);
+}
 static inline void writel(void *addr, u32 val) {
     barrier();
     *(volatile u32 *)addr = cpu_to_le32(val);
