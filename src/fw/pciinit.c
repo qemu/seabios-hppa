@@ -754,6 +754,12 @@ pci_bios_init_bus_rec(int bus, u8 *pci_bus)
             pci_config_writeb(bdf, PCI_SECONDARY_BUS, 255);
             pci_config_writeb(bdf, PCI_SUBORDINATE_BUS, 0);
         }
+        if (CONFIG_PARISC) {
+            /* Avoid HP-UX 11.23 warning:
+             * SCSI: PCI command register PCI_CS_CACHE_LINE_SIZE not set for bus: -1
+             */
+            pci_config_writeb(bdf, PCI_CACHE_LINE_SIZE, 64);
+        }
     }
 
     foreachbdf(bdf, bus) {
