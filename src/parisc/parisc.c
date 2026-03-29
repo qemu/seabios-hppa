@@ -3426,8 +3426,8 @@ static int parisc_boot_menu(unsigned long *iplstart, unsigned long *iplend,
     // IPL_SIZE - Multiple of 2 Kbytes, nonzero, less than or equal to 256 Kbytes.
     // IPL_ENTRY-  Word aligned, less than IPL_SIZE
 
-    /* If we are strict, a 715 may not be able to boot from some ODE CD-ROMS. */
-    if (ipl_size > disk_op.drive_fl->max_bytes_transfer) {
+    /* DISABLE: If we are strict, a 715 may not be able to boot from some ODE CD-ROMS. */
+    if (0 && ipl_size > disk_op.drive_fl->max_bytes_transfer) {
         printf("ERROR: Cannot load IPL, %d too big for max size of %d bytes.",
             ipl_size, disk_op.drive_fl->max_bytes_transfer);
         return 0;
@@ -3436,7 +3436,7 @@ static int parisc_boot_menu(unsigned long *iplstart, unsigned long *iplend,
     /* seek to beginning of IPL */
     disk_op.drive_fl = boot_drive;
     disk_op.command = CMD_SEEK;
-    disk_op.count = 0; // (ipl_size / disk_op.drive_fl->blksize);
+    disk_op.count = 0;
     disk_op.lba = (ipl_addr / disk_op.drive_fl->blksize);
     ret = process_op(&disk_op);
     // printf("DISK_SEEK to IPL returned %d\n", ret);
@@ -3448,7 +3448,9 @@ static int parisc_boot_menu(unsigned long *iplstart, unsigned long *iplend,
     disk_op.count = (ipl_size / disk_op.drive_fl->blksize);
     disk_op.lba = (ipl_addr / disk_op.drive_fl->blksize);
     ret = process_op(&disk_op);
-    // printf("DISK_READ IPL returned %d, count %d of %d\n", ret, disk_op.count, ipl_size / disk_op.drive_fl->blksize);
+    if (ret != 0)
+        printf("Warning: DISK_READ IPL returned %d, count %d of %d\n",
+                ret, disk_op.count, ipl_size / disk_op.drive_fl->blksize);
 
     // printf("First word at %p is 0x%x\n", target, target[0]);
     /* verify IPL checksum */
