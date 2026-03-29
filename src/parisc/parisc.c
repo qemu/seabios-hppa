@@ -521,8 +521,9 @@ int HPA_is_astro_mmio(unsigned long hpa)
 {
     if (!has_astro)
         return 0;
-    return (F_EXTEND(hpa) - F_EXTEND(LMMIO_DIST_BASE_ADDR))
-            < (IOS_DIST_BASE_ADDR - LMMIO_DIST_BASE_SIZE);
+    if (hpa >= pcimem_start && hpa < pcimem_end)
+        return 1;
+    return 0;
 }
 
 struct pci_device *find_pci_from_HPA(unsigned long hpa)
