@@ -3133,7 +3133,7 @@ unsigned long __VISIBLE toc_handler(struct pdc_toc_pim_11 *pim)
                 pim11->cpu_state = state;
 
         /* check that we use the same PIM entries as assembly code */
-        BUG_ON(pim11 != pim);
+        BUG_ON((unsigned int)(uintptr_t)pim11 != (unsigned int)(uintptr_t)pim);
 
         printf("\n");
         printf("##### CPU %d HPA %lx: SeaBIOS TOC register dump #####\n", cpu, hpa);
