@@ -660,7 +660,8 @@ static const char *hpa_device_name(unsigned long hpa, int output)
 
 static __attribute__((__unused__)) void print_hwpath(struct hardware_path *p, int newline)
 {
-    printf("PATH %d/%d/%d/%d/%d/%d/%d%s", p->bc[0], p->bc[1],
+    printf("PATH (%d) ", p->flags);
+    printf("%d/%d/%d/%d/%d/%d/%d%s", p->bc[0], p->bc[1],
             p->bc[2],p->bc[3],p->bc[4],p->bc[5],
             p->mod, newline ? "\n":"");
 }
@@ -848,6 +849,11 @@ static int keep_add_generic_devices(void)
     while (dev->hpa) {
         if (0) printf("DEVICE HPA %lx  name %s  type %d\n",
                 dev->hpa, hpa_name(dev->hpa), dev->iodc->type & 0x1f);
+
+        /* PAT: put cell number (0) in lower bits of flags byte of hwpath */
+        if (!pat_disabled())
+            dev->mod_path->path.flags = 0; // (PF_AUTOBOOT | PF_AUTOSEARCH);
+
         switch (dev->iodc->type & 0x1f) {
         case HPHW_MEMORY:       /* Memory. Save HPA in PAGE0 entry. */
                                 /* MEMORY_HPA or ASTRO_MEMORY_HPA */
@@ -3626,6 +3632,11 @@ static int prepare_boot_path(volatile struct pz_device *dest,
     else {
         BUG_ON(1);
     }
+
+    /* On PAT, the cell number is in lower bits of flags byte in hwpath.
+     * We save cell #0 there, so mask out the relevant bits. */
+    if (!pat_disabled())
+        mod_path->path.flags &= (PF_AUTOBOOT | PF_AUTOSEARCH);
 
     /* copy device path to entry in PAGE0 */
     memcpy((void*)dest, source, sizeof(*source));
