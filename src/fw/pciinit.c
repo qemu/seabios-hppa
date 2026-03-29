@@ -557,14 +557,77 @@ static int astro_pci_slot_get_irq(struct pci_device *pci, int pin)
 
 static void astro_mem_addr_setup(struct pci_device *dev, void *arg)
 {
-    pcimem_start = LMMIO_DIST_BASE_ADDR;
-    pcimem_end   = pcimem_start + LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
+    int i, ffs;
+
+    if (MAP_ALL_ON_PCI0) {
+        /* Allow PCI0 to reach from 0xf4 to 0xfc region */
+        /* Do that by using 2 LMMIO directed entries */
+        pcimem_start = F_EXTEND(SEABIOS_HPPA_GFX_START);
+        pcimem_end   = pcimem_start + (2 * 0x04000000);
+    } else {
+        pcimem_start = F_EXTEND(SEABIOS_LMMIO_DIST_BASE_ADDR);
+        pcimem_end   = pcimem_start + SEABIOS_LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
+    }
+
+    #define _ULL(x) ((unsigned long long)(x))
+    #define SIZE2MASK(s) (~(_ULL(s)-1))
+    #define RE_BIT  1
+
+    unsigned long long *ptr = (unsigned long long *) F_EXTEND(ASTRO_HPA);
+    ptr[0x360 / 8] = cpu_to_le64(F_EXTEND(SEABIOS_LMMIO_DIST_BASE_ADDR) | RE_BIT);// LMMIO_DIST_BASE
+    ptr[0x368 / 8] = cpu_to_le64(SIZE2MASK(SEABIOS_LMMIO_DIST_BASE_SIZE));   // LMMIO_DIST_MASK
+    ffs = __builtin_ffs(SEABIOS_LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC) - 1;
+    ptr[0x370 / 8] = cpu_to_le64(_ULL(ffs) << 58);                      // LMMIO_DIST_ROUTE
+    ptr[0x378 / 8] = cpu_to_le64(GMMIO_DIST_BASE_ADDR | RE_BIT);        // GMMIO_DIST_BASE
+    ptr[0x380 / 8] = cpu_to_le64(SIZE2MASK(GMMIO_DIST_BASE_SIZE));      // GMMIO_DIST_MASK
+    ffs = __builtin_ffs(GMMIO_DIST_BASE_SIZE / ROPES_PER_IOC) - 1;
+    ptr[0x388 / 8] = cpu_to_le64(_ULL(ffs) << 58);                      // GMMIO_DIST_ROUTE
+    ptr[0x390 / 8] = cpu_to_le64(F_EXTEND(IOS_DIST_BASE_ADDR) | RE_BIT);// IOS_DIST_BASE
+    ptr[0x398 / 8] = cpu_to_le64(SIZE2MASK(IOS_DIST_BASE_SIZE));        // IOS_DIST_MASK
+    ffs = __builtin_ffs(IOS_DIST_BASE_SIZE / ROPES_PER_IOC) - 1;
+    ptr[0x3a0 / 8] = cpu_to_le64(_ULL(ffs) << 58);                      // IOS_DIST_ROUTE
+    ptr[0x3c0 / 8] = cpu_to_le64(F_EXTEND(0xfee04a00)); // IOS_DIRECT_BASE
+    ptr[0x3c8 / 8] = cpu_to_le64(SIZE2MASK(0x10000));   // IOS_DIRECT_MASK
+    ptr[0x3d0 / 8] = cpu_to_le64(_ULL(0x0));            // IOS_DIRECT_ROUTE
 
     MaxPCIBus = 4;
     pci_slot_get_irq = astro_pci_slot_get_irq;
 
     /* setup io address space */
     pci_io_low_end = IOS_DIST_BASE_SIZE / ROPES_PER_IOC;
+
+    /* Initialize the 4 Astro directed ranges. */
+    /* We use all for PCI rope 0 to map most of the I/O memory */
+    for (i = 0; i < 4; i++) {
+            u64 addr, mask, size;
+            unsigned int rope;
+            void *reg = (void *)F_EXTEND(ASTRO_BASE_HPA + i * 0x18);
+
+            addr = F_EXTEND(SEABIOS_HPPA_GFX_START);
+            size = 64 * 1024 * 1024;
+            addr += i * size;
+
+            /* clear bit 0 of address to disable LMMIO while we modify things */
+            writeq(reg + LMMIO_DIRECT0_BASE, addr & ~1ULL);
+
+            /* HACK: we want all PCI devices on rope0 */
+            rope = 0;
+            writeq(reg + LMMIO_DIRECT0_ROUTE, rope & (ROPES_PER_IOC - 1));
+            mask = ~size + 1;
+            writeq(reg + LMMIO_DIRECT0_MASK, mask);
+
+            /* do not turn on LMMIO region if it overlaps firmware or CPU HPA. */
+            if ((F_EXTEND(CPU_HPA) >= addr && F_EXTEND(CPU_HPA) <= (addr + size - 1)) ||
+                 addr <= F_EXTEND(FIRMWARE_START))
+                continue;
+
+            if (!MAP_ALL_ON_PCI0 || i>1) {
+                continue;
+            }
+
+            /* otherwise turn on the LMMIO region */
+            writeq(reg + LMMIO_DIRECT0_BASE, addr | 1);
+    }
 }
 
 static void parisc_mem_addr_setup(struct pci_device *dev, void *arg)
@@ -579,35 +642,15 @@ static void parisc_mem_addr_setup(struct pci_device *dev, void *arg)
 unsigned long add_lmmio_directed_range(unsigned long size, int rope)
 {
 #ifdef CONFIG_PARISC
-    int i;
-
     if (!has_astro)
         return -1;
 
-    /* Astro has 4 directed ranges. */
-    for (i = 0; i < 4; i++) {
-            unsigned long addr;
-            void *reg = (void *)F_EXTEND(ASTRO_BASE_HPA + i * 0x18);
+    if (size == 64 * 1024 * 1024)
+        return SEABIOS_HPPA_GFX_START;
+    if (size == 32 * 1024 * 1024)
+        return 0xfa000000;
+    return SEABIOS_HPPA_GFX_START;
 
-            addr = readl(reg + LMMIO_DIRECT0_BASE);
-            if (addr & 1)
-                    continue;       /* already used */
-
-            /* fixme for multiple addresses */
-            /* Linux driver currently only allows one distr. range per IOC */
-            addr = 0xf8000000;  /* graphics card area for parisc, LASI_GFX_HPA is usually artist */
-            addr += i * 0x02000000;
-
-            /* clear bit 0 of address to disable LMMIO while we modify things */
-            writel(reg + LMMIO_DIRECT0_BASE, addr & ~1ULL);
-            writel(reg + LMMIO_DIRECT0_ROUTE, rope & (ROPES_PER_IOC - 1));
-            size = 0xfff8000000 | ~(size-1); /* is -1 correct? */
-            // dprintf(1, "use  addr %lx  size %lx\n", addr|1, size);
-            writel(reg + LMMIO_DIRECT0_MASK, size);
-            /* finally turn on the modified LMMIO region */
-            writel(reg + LMMIO_DIRECT0_BASE, addr | 1);
-            return addr;
-    }
 #endif /* CONFIG_PARISC */
     return -1UL;
 }
@@ -635,6 +678,7 @@ void generate_pcitable(int view, int pathnum, unsigned long *table)
     #define HBA_PORT_SPACE_SIZE       (1UL << HBA_PORT_SPACE_BITS)
     #define HBA_PORT_BASE(h)  ((h) << HBA_PORT_SPACE_BITS)
 
+    unsigned long long base64, size64;
     unsigned long base, len, size;
     int num = 0;
     int pcibus = pathnum_to_pcibus(pathnum);
@@ -642,33 +686,48 @@ void generate_pcitable(int view, int pathnum, unsigned long *table)
 
     /* bus number */
     p.type = io.type = ENAB | PAT_PBNUM;
-    p.start = io.start = pcibus;
-    p.end   = io.end   = pcibus;
+    p.start = io.start = pcibus * 8;
+    p.end   = io.end   = (pcibus + 1) * 8 - 1;
     *dest++ = (view == PA_VIEW) ? p : io;
     num++;
 
     /* LMMIO */
-    base = LMMIO_DIST_BASE_ADDR;
-    len  = LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
+    base = SEABIOS_LMMIO_DIST_BASE_ADDR;
+    len  = SEABIOS_LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
     p.type = io.type = ENAB | PAT_LMMIO;
-    io.start = base + pathnum * len;
+    if (pcibus == 0 && MAP_ALL_ON_PCI0) {
+        /* Allow PCI0 to reach from 0xf4 to 0xfc region */
+        io.start = SEABIOS_HPPA_GFX_START;
+        len = (unsigned int) (2 * 0x04000000);
+    } else {
+        io.start = base + pathnum * len;
+    }
     io.end   = io.start + len - 1;
     p.start = F_EXTEND(io.start);
     p.end   = p.start + len - 1;
     *dest++ = (view == PA_VIEW) ? p : io;
     num++;
 
-    /* GMMIO - not supported yet */
-    // p.type = io.type = ENAB | PAT_GMMIO;
+    /* GMMIO */
+    p.type = io.type = ENAB | PAT_GMMIO;
+    base64 = GMMIO_DIST_BASE_ADDR;
+    size64 = GMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
+    io.start = base64 + pathnum * size64;
+    io.end   = io.start + size64 - 1;
+    io.start += 64*1024*1024; // skip first 64MB which is pci-IO
+    p.start  = io.start;
+    p.end    = io.end;
+    *dest++ = (view == PA_VIEW) ? p : io;
+    num++;
 
     /* PAT_PIOP */
-    // may need adjustment for 64-bit PAT
+    // on 64-bit PAT use the lower PIOP area of GMMIO (not IOS_DIST_BASE_ADDR)
     p.type = io.type = ENAB | PAT_PIOP;
-    size = IOS_DIST_BASE_SIZE / ROPES_PER_IOC;
-    io.start = pathnum * size | HBA_PORT_BASE(pcibus);
-    io.end   = io.start + (0xe000 ^ (HBA_PORT_SPACE_SIZE - 1));
-    p.start  = F_EXTEND(io.start);
-    p.end    = F_EXTEND(io.end);
+    size = GMMIO_DIST_BASE_SIZE / ROPES_PER_IOC;
+    io.start = GMMIO_DIST_BASE_ADDR + pathnum * size;
+    io.end   = io.start + 64 * 1024 * 1024 - 1;
+    p.start  = io.start;
+    p.end    = io.end;
     *dest++ = (view == PA_VIEW) ? p : io;
     num++;
 

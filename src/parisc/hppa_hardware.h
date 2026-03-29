@@ -82,8 +82,18 @@ extern unsigned long port_serial_2;
 #define LMMIO_DIST_BASE_ADDR      0xf4000000UL
 #define LMMIO_DIST_BASE_SIZE       0x4000000UL
 
+#define MAP_ALL_ON_PCI0 1      /* map all PCI devices on bus #0 */
+
+#define SEABIOS_HPPA_GFX_START        0xf4000000UL
+
+#define SEABIOS_LMMIO_DIST_BASE_ADDR 0xf8000000UL
+#define SEABIOS_LMMIO_DIST_BASE_SIZE (64UL * 1024 * 1024)
+
+#define GMMIO_DIST_BASE_ADDR        0xff800000000ULL
+#define GMMIO_DIST_BASE_SIZE        (16ULL * 1024 * 1024 * 1024)
+
 #define IOS_DIST_BASE_ADDR        0xfee00000UL
-#define IOS_DIST_BASE_SIZE           0x10000UL
+#define IOS_DIST_BASE_SIZE        (512 * 1024)
 
 #define ROPES_PER_IOC           8       /* per Ike half or Pluto/Astro */
 

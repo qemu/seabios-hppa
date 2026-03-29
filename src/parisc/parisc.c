@@ -2524,7 +2524,7 @@ static int pdc_pat_cell(unsigned long *arg)
     unsigned long *result = (unsigned long *)ARG2;
     struct pdc_pat_cell_mod_maddr_block *mb = (void *)ARG6;
     unsigned long hpa_index, count, offset;
-    int view;   /* PA_VIEW or IO_VIEW */
+    int n, view;   /* PA_VIEW or IO_VIEW */
     hppa_device_t *dev;
 
     switch (option) {
@@ -2567,16 +2567,35 @@ static int pdc_pat_cell(unsigned long *arg)
             }
 
 #if 0
-PAT INDEX: 0: cba 0xfffffffffffa0000, mod_info 0x100000000000001, mod_location 0xff01ff11, mod: 0xa0ff0000 0x0
-PAT INDEX: 1: cba 0xfffffffffed08001, mod_info 0x200000000000010, mod_location 0xffffff71, mod: 0x40000000 0x0
+PAT INDEX: 0: cba 0xfffffffffffa0000, mod_info 0x100000000000001, mod_location 0xff01ff11, mod: 0xa0ff0000 0x0 0x0
+PAT INDEX: 1: cba 0xfffffffffed08001, mod_info 0x200000000000010, mod_location 0xffffff71, mod: 0x40000000 0x0 0x0
 PAT INDEX: 2: cba 0xfffffffffed00001, mod_info 0x32f020000000008, mod_location 0xffffff82, mod: 0x0 0x6 0xc000000000000005
-    0xfffffffffed18000 0xfffffffffed2ffff 0x8000000000000000 0x0 0x3f 0x8000000000000001 0xfffffffff8000000
-    0xfffffffffbffffff 0x40000001a1701
-PAT INDEX: 3: cba 0xfffffffffed30001, mod_info 0x400000000000002, mod_location 0xffff00ff83, mod: 0x0 0x4 ...
+NO. 0  type 0xc000000000000005, start 0xfffffffffed18000, end 0xfffffffffed2ffff
+NO. 1  type 0x8000000000000000, start 0x00000000, end 0x0000003f
+NO. 2  type 0x8000000000000001, start 0xfffffffff8000000, end 0xfffffffffbffffff
+NO. 3  type 0x40000001a1701, start 0xfffffffff0000000, end 0xfffffffff7ffffff
+NO. 4  type 0x40000001a1701, start 0xfffffffffc000000, end 0xfffffffffecfffff
+NO. 5  type 0x8000000000000002, start 0xfffffff800000000, end 0xfffffffbffffffff
+PAT INDEX: 3: cba 0xfffffffffed30001, mod_info 0x400000000000002, mod_location 0xffff00ff83, mod: 0x0 0x4 0x8000000000000000
+NO. 0  type 0x8000000000000000, start 0x00000000, end 0x00000007
+NO. 1  type 0x8000000000000001, start 0xfffffffff8000000, end 0xfffffffff87fffff
+NO. 2  type 0x8000000000000002, start 0xfffffff804000000, end 0xfffffff87fffffff
+NO. 3  type 0x8000000000000004, start 0xfffffff800000000, end 0xfffffff803ffffff
 PAT INDEX: 4: cba 0xfffffffffed34001, mod_info 0x400000000000002, mod_location 0xffff02ff83, mod: 0x0 0x4 0x8000000000000000
+NO. 0  type 0x8000000000000000, start 0x00000010, end 0x00000017
+NO. 1  type 0x8000000000000001, start 0xfffffffff9000000, end 0xfffffffff97fffff
+NO. 2  type 0x8000000000000002, start 0xfffffff904000000, end 0xfffffff97fffffff
+NO. 3  type 0x8000000000000004, start 0xfffffff900000000, end 0xfffffff903ffffff
 PAT INDEX: 5: cba 0xfffffffffed38001, mod_info 0x400000000000002, mod_location 0xffff04ff83, mod: 0x0 0x4 0x8000000000000000
+NO. 0  type 0x8000000000000000, start 0x00000020, end 0x00000027
+NO. 1  type 0x8000000000000001, start 0xfffffffffa000000, end 0xfffffffffa7fffff
+NO. 2  type 0x8000000000000002, start 0xfffffffa04000000, end 0xfffffffa7fffffff
+NO. 3  type 0x8000000000000004, start 0xfffffffa00000000, end 0xfffffffa03ffffff
 PAT INDEX: 6: cba 0xfffffffffed3c001, mod_info 0x400000000000002, mod_location 0xffff06ff83, mod: 0x0 0x4 0x8000000000000000
-
+NO. 0  type 0x8000000000000000, start 0x00000030, end 0x00000037
+NO. 1  type 0x8000000000000001, start 0xfffffffffb000000, end 0xfffffffffb7fffff
+NO. 2  type 0x8000000000000002, start 0xfffffffb04000000, end 0xfffffffb7fffffff
+NO. 3  type 0x8000000000000004, start 0xfffffffb00000000, end 0xfffffffb03ffffff
 Found devices:
 1. Crescendo DC- 440 [160] at 0xfffffffffffa0000 { type:0, hv:0x5d6, sv:0x4, rev:0x0 }
 2. Memory [8] at 0xfffffffffed08000 { type:1, hv:0x9b, sv:0x9, rev:0x0 }
@@ -2609,21 +2628,43 @@ Found devices:
                 mb->mod[1] = 0; /* no ranges */
                 break;
             case HPHW_IOA: /* Astro BC Runway Port */
-                mb->mod_info = (unsigned long) 0x32f020000000008UL;
+                mb->mod_info = (unsigned long) 0x032f020000000008UL;
+                // mb->mod_info = (unsigned long) 0x0300010000000008UL;
                 mb->mod_location = 0xffffff82;
-                mb->mod[0]  = 0x0;       /* unused */
-                mb->mod[1]  = 3;
-                mb->mod[2]  = (unsigned long) 0xc000000000000005UL; /* 1 */
-                mb->mod[3]  = (unsigned long) 0xfffffffffed18000UL;
-                mb->mod[4]  = (unsigned long) 0xfffffffffed2ffffUL;
-                mb->mod[5]  = (unsigned long) 0x8000000000000000UL; /* 2 */
-                mb->mod[6]  = (unsigned long) 0x00UL;
-                mb->mod[7]  = (unsigned long) 0x3fUL;
-                mb->mod[8]  = (unsigned long) 0x8000000000000001UL; /* 3 */
-                mb->mod[9]  = (unsigned long) 0xfffffffff8000000UL;
-                mb->mod[10] = (unsigned long) 0xfffffffffbffffffUL;
-                // TODO: MORE MISSING HERE!!
-                // 0x40000001a1701
+                n = 0;
+                mb->mod[0] = 0x0;       /* unused */
+                n++; mb->mod[1] = 0;    /* is calculated below! */
+                n++; mb->mod[n] = (unsigned long) 0xc000000000000005UL; // HPA
+                n++; mb->mod[n] = dev->hpa;
+                n++; mb->mod[n] = mb->mod[n-1] + 4 * PAGE_SIZE - 1;
+                n++; mb->mod[n] = (unsigned long) 0x8000000000000000UL; // PCI bus
+                n++; mb->mod[n] = (unsigned long) 0x00UL;
+                n++; mb->mod[n] = (unsigned long) 0x3fUL;
+                n++; mb->mod[n] = (unsigned long) 0x8000000000000001UL; // LLMIO
+                if (MAP_ALL_ON_PCI0) {
+                  n++; mb->mod[n] = F_EXTEND(SEABIOS_HPPA_GFX_START); // LLMIO hack all on PCI0
+                  n++; mb->mod[n] = F_EXTEND(SEABIOS_LMMIO_DIST_BASE_ADDR) + SEABIOS_LMMIO_DIST_BASE_SIZE - 1;
+                } else {
+                  n++; mb->mod[n] = F_EXTEND(SEABIOS_LMMIO_DIST_BASE_ADDR);
+                  n++; mb->mod[n] = F_EXTEND(SEABIOS_LMMIO_DIST_BASE_ADDR) + SEABIOS_LMMIO_DIST_BASE_SIZE / ROPES_PER_IOC - 1;
+                }
+#if 0
+                n++; mb->mod[n] = (unsigned long) 0x40000001a1701; // Directed Range set
+                n++; mb->mod[n] = F_EXTEND(0xf0000000);
+                n++; mb->mod[n] = F_EXTEND(0xf8000000) - 1;
+                n++; mb->mod[n] = (unsigned long) 0x40000001a1701; // Directed Range set
+                n++; mb->mod[n] = F_EXTEND(0xfc000000);
+                n++; mb->mod[n] = F_EXTEND(0xfed00000) - 1;
+#endif
+                n++; mb->mod[n] = (unsigned long) 0x8000000000000002UL; // GMMIO
+                n++; mb->mod[n] = (unsigned long) GMMIO_DIST_BASE_ADDR;
+                n++; mb->mod[n] = mb->mod[n-1] + GMMIO_DIST_BASE_SIZE - 1;
+#if 0
+                n++; mb->mod[n] = (unsigned long) 0x8000000000000003UL; // Non-PIOP
+                n++; mb->mod[n] = F_EXTEND(IOS_DIST_BASE_ADDR);
+                n++; mb->mod[n] = mb->mod[n-1] +  IOS_DIST_BASE_SIZE- 1;
+#endif
+                mb->mod[1] = (n-2) / 3 + 1;
                 break;
             case HPHW_BRIDGE: /* Elroy PCI bridge */
                 mb->mod_info = (unsigned long) 0x400000000000002UL;
