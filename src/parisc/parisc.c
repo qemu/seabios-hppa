@@ -3427,6 +3427,7 @@ static int parisc_boot_menu(unsigned long *iplstart, unsigned long *iplend,
         .count = 0,
         .lba = 0,
     };
+    unsigned long allsize;
 
     boot_drive = select_parisc_boot_drive(bootdrive);
 
@@ -3490,10 +3491,11 @@ static int parisc_boot_menu(unsigned long *iplstart, unsigned long *iplend,
     // IPL_ENTRY-  Word aligned, less than IPL_SIZE
 
     /* DISABLE: If we are strict, a 715 may not be able to boot from some ODE CD-ROMS. */
-    if (0 && ipl_size > disk_op.drive_fl->max_bytes_transfer) {
-        printf("ERROR: Cannot load IPL, %d too big for max size of %d bytes.",
+    if (ipl_size > disk_op.drive_fl->max_bytes_transfer) {
+        printf("INFO: IPL size is %d bytes, exceeds max transfer size of %d bytes.\n",
             ipl_size, disk_op.drive_fl->max_bytes_transfer);
-        return 0;
+        /* reduce by a few blocks to avoid being to close to transfer limit */
+        disk_op.drive_fl->max_bytes_transfer -= disk_op.drive_fl->blksize;
     }
 
     /* seek to beginning of IPL */
@@ -3508,12 +3510,24 @@ static int parisc_boot_menu(unsigned long *iplstart, unsigned long *iplend,
     disk_op.drive_fl = boot_drive;
     disk_op.buf_fl = target;
     disk_op.command = CMD_READ;
-    disk_op.count = (ipl_size / disk_op.drive_fl->blksize);
     disk_op.lba = (ipl_addr / disk_op.drive_fl->blksize);
-    ret = process_op(&disk_op);
-    if (ret != 0)
-        printf("Warning: DISK_READ IPL returned %d, count %d of %d\n",
-                ret, disk_op.count, ipl_size / disk_op.drive_fl->blksize);
+    allsize = ALIGN(ipl_size, disk_op.drive_fl->blksize);
+    do {
+        unsigned long len;
+        // max_bytes_transfer is the max amount we can read per call.
+        len = MIN(allsize, disk_op.drive_fl->max_bytes_transfer);
+        disk_op.count = len / disk_op.drive_fl->blksize;
+        ret = process_op(&disk_op);
+        if (ret != 0) {
+            printf("Warning: DISK_READ IPL returned %d, count %d of %d\n",
+                    ret, disk_op.count, ipl_size / disk_op.drive_fl->blksize);
+            break;
+        }
+        len = disk_op.count * disk_op.drive_fl->blksize;
+        disk_op.buf_fl += len;
+        disk_op.lba += disk_op.count;
+        allsize -= len;
+    } while (allsize != 0);
 
     // printf("First word at %p is 0x%x\n", target, target[0]);
     /* verify IPL checksum */
