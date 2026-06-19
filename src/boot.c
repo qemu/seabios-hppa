@@ -619,6 +619,12 @@ boot_add_cd(struct drive_s *drive, const char *desc, int prio)
                   , drive, desc);
 }
 
+void
+boot_add_tape(struct drive_s *drive, const char *desc, int prio)
+{
+    bootentry_add(IPL_TYPE_TAPE, defPrio(prio, DEFAULT_PRIO), drive, desc);
+}
+
 // Add a CBFS payload entry
 void
 boot_add_cbfs(void *data, const char *desc, int prio)
